@@ -1,0 +1,86 @@
+---
+// Transparency Pledge: impegni scritti + Drive di gestione di esempio (centro visivo della pagina).
+import TIcon from '../../trust/TIcon.astro';
+import T from '../../T.astro';
+import PageHero from '../../PageHero.astro';
+import DriveBrowser from '../../trust/DriveBrowser.astro';
+import TrustCta from '../../trust/TrustCta.astro';
+import { exampleDrive } from '../../../data/trust/drive-example';
+import { url, tt, type Locale } from '../../../i18n/config';
+interface Props { lang: Locale }
+const { lang } = Astro.props;
+const x = tt(lang);
+const p = x.pledge;
+---
+<PageHero eyebrow={p.eyebrow} title={p.h1} lead={p.lead}>
+  <div class="btn-row" slot="actions">
+    <a class="btn btn--primary" href="#example-drive"><TIcon name="folderOpen" /> {p.driveTitle}</a>
+    <a class="btn btn--secondary" href={url(lang, 'call')}><TIcon name="video" /> {x.strip.callCta}</a>
+  </div>
+</PageHero>
+
+<section class="section">
+  <div class="container">
+    <div class="section-head" data-reveal>
+      <p class="eyebrow"><TIcon name="shield" /> {p.commitTitle}</p>
+      <h2>{p.commitTitle}</h2>
+    </div>
+    <ol class="pledges">
+      {p.items.map((it, i) => (
+        <li class="pledge card" data-reveal style={`transition-delay:${(i % 4) * 60}ms`}>
+          <div class="pledge__top">
+            <span class="icon-badge"><TIcon name={it.icon} /></span>
+            <span class="pledge__n tnum" aria-hidden="true">{String(i + 1).padStart(2, '0')}</span>
+          </div>
+          <h3>{it.title}</h3>
+          <p><T text={it.text} /></p>
+          {it.status === 'confirm' && <span class="badge badge--soon"><TIcon name="clock" /> {p.confirmBadge}</span>}
+        </li>
+      ))}
+    </ol>
+  </div>
+</section>
+
+<section class="section drive-sec" id="example-drive">
+  <div class="container">
+    <div class="section-head" data-reveal>
+      <p class="eyebrow"><TIcon name="eye" /> {p.driveEyebrow}</p>
+      <h2>{p.driveTitle}</h2>
+      <p>{p.driveLead}</p>
+    </div>
+    <DriveBrowser lang={lang} model={exampleDrive} />
+  </div>
+</section>
+
+<section class="section">
+  <div class="container narrow">
+    <div class="card card--flat limits" data-reveal>
+      <h2><TIcon name="info" /> {p.limitsTitle}</h2>
+      <ul class="checklist checklist--muted">
+        {p.limits.map((l) => <li><TIcon name="x" /><span>{l}</span></li>)}
+      </ul>
+    </div>
+  </div>
+</section>
+
+<TrustCta lang={lang} title={p.ctaTitle} text={p.ctaText} />
+
+<style>
+  .pledges { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--sp-4); grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); counter-reset: p; }
+  .pledge { display: flex; flex-direction: column; gap: var(--sp-2); position: relative; transition: transform .18s ease, box-shadow .18s ease; }
+  .pledge:hover { transform: translateY(-2px); box-shadow: var(--sh-md); }
+  .pledge__top { display: flex; align-items: flex-start; justify-content: space-between; }
+  .pledge__top .icon-badge { margin: 0; }
+  .pledge__n { font-size: 2rem; font-weight: 700; line-height: 1; color: var(--c-primary-100); letter-spacing: -.02em; }
+  .pledge h3 { font-size: var(--fs-md); margin: var(--sp-2) 0 0; }
+  .pledge p { font-size: var(--fs-sm); margin: 0; flex: 1; }
+  .pledge .badge { align-self: flex-start; margin-block-start: var(--sp-2); }
+  .drive-sec { background:
+      radial-gradient(50rem 24rem at 90% 0%, var(--c-primary-50), transparent 60%),
+      radial-gradient(40rem 22rem at 0% 100%, var(--c-secondary-50), transparent 60%), var(--c-surface);
+    border-block: 1px solid var(--c-line); }
+  .narrow { max-inline-size: 860px; }
+  .limits h2 { display: flex; align-items: center; gap: var(--sp-3); font-size: var(--fs-lg); }
+  .limits h2 :global(.icon) { color: var(--c-primary); }
+  .checklist--muted :global(.icon) { color: var(--c-muted); }
+</style>

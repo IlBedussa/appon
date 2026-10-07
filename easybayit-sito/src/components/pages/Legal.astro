@@ -1,0 +1,27 @@
+---
+// Pagine legali (privacy, termini, accessibilità): MODELLI SEGNAPOSTO da far rivedere a un avvocato.
+import Icon from '../Icon.astro';
+import T from '../T.astro';
+import { t, type Locale } from '../../i18n/config';
+interface Props { lang: Locale; kind: 'privacy' | 'terms' | 'accessibility' }
+const { lang, kind } = Astro.props;
+const d = t(lang);
+const p = d.pages[kind];
+---
+<section class="section">
+  <div class="container"><div class="prose">
+    <div class="notice" role="note"><Icon name="alert" /><p><strong>{d.ui.legalBanner}</strong></p></div>
+    <h1 class="legal-h1">{p.h1}</h1>
+    <p class="updated">{d.ui.lastUpdated}: <T text={p.updated} /></p>
+    {p.sections.map((s) => (
+      <>
+        <h2>{s.h}</h2>
+        <p><T text={s.p} /></p>
+      </>
+    ))}
+  </div></div>
+</section>
+<style>
+  .legal-h1 { font-size: var(--fs-2xl); margin-block-start: var(--sp-6); }
+  .updated { color: var(--c-muted); font-size: var(--fs-sm); }
+</style>

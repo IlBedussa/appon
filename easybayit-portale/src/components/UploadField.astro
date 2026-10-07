@@ -1,0 +1,37 @@
+---
+// Campo file con caricamento diretto su Supabase Storage (URL firmati): i file non passano dal server
+// del portale (limite di 4,5 MB per richiesta su Vercel). Il form invia solo gli id (upload_ids);
+// la pagina li finalizza (verifica di tipo reale, dimensione, impronta) e li collega al record.
+import { POLICY, type UploadKind } from '../lib/upload-policy';
+interface Props { name: string; label: string; kind: UploadKind; targetId?: string | null; hint?: string; error?: string; required?: boolean; class?: string }
+const p = Astro.props;
+const { t } = Astro.locals;
+const pol = POLICY[p.kind];
+const id = `f-${p.name}`;
+const limits = Object.fromEntries(pol.mimes.map((m) => [m, pol.maxBytes(m)]));
+const { preparing, uploading, done, retrying, failed, tooBig, badType, tooMany, forbidden, saving } = t.up;
+const strings = { preparing, uploading, done, retrying, failed, tooBig, badType, tooMany, forbidden, saving };
+const desc = [p.hint ? `${id}-hint` : '', `${id}-status`, p.error ? `${id}-err` : ''].filter(Boolean).join(' ');
+---
+<div class:list={['field', 'du', p.class]} data-du data-du-kind={p.kind} data-du-target={p.targetId ?? ''} data-du-max={pol.maxFiles}
+  data-du-limits={JSON.stringify(limits)} data-du-i18n={JSON.stringify(strings)}>
+  <label for={id}>{p.label}{p.required ? <span class="req-mark" aria-hidden="true">*</span> : <span class="opt"> ({t.common.optional})</span>}</label>
+  <input class="input" id={id} name={p.name} type="file" accept={pol.mimes.join(',')} multiple={pol.maxFiles > 1} required={p.required}
+    aria-invalid={p.error ? 'true' : undefined} aria-describedby={desc} />
+  {p.hint && <small class="hint" id={`${id}-hint`}>{p.hint}</small>}
+  <noscript><p class="field-error">{t.up.noJs}</p></noscript>
+  <ul class="du-list" data-du-list aria-live="polite"></ul>
+  <p class="du-status form-status" id={`${id}-status`} data-du-status role="status"></p>
+  {p.error && <p class="field-error" id={`${id}-err`}>{p.error}</p>}
+</div>
+<script>
+  import '../scripts/direct-upload';
+</script>
+<style>
+  .du-list { list-style: none; margin: 0; padding: 0; display: grid; gap: .35rem; }
+  .du-list :global(li) { display: grid; grid-template-columns: minmax(0, 1fr) 8rem auto; gap: .5rem; align-items: center; font-size: var(--fs-sm); }
+  .du-list :global(.du-name) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .du-list :global(progress) { inline-size: 100%; block-size: .5rem; }
+  .du-list :global(li[data-error]) { color: var(--c-error); }
+  .du-status:empty { display: none; }
+</style>

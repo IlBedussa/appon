@@ -1,0 +1,14 @@
+---
+// Dashboard demo proprietari in ebraico/francese/italiano (vedi src/pages/portal/demo.astro).
+import Base from '../../../layouts/Base.astro';
+import Dashboard from '../../../components/pages/Dashboard.astro';
+import { pageMeta, type Locale } from '../../../i18n/config';
+export function getStaticPaths() {
+  return (['he', 'fr', 'it'] as const).map((lang) => ({ params: { lang }, props: { lang } }));
+}
+const { lang } = Astro.props as { lang: Locale };
+const meta = pageMeta(lang, 'demo');
+---
+<Base lang={lang} page="demo" title={meta.title} description={meta.description}>
+  <Dashboard lang={lang} />
+</Base>

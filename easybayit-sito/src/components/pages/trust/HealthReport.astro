@@ -1,0 +1,61 @@
+---
+// Report mensile sullo stato dell'immobile: cosa contiene + PDF di esempio scaricabile in 4 lingue.
+import TIcon from '../../trust/TIcon.astro';
+import T from '../../T.astro';
+import PageHero from '../../PageHero.astro';
+import SampleDownloads from '../../trust/SampleDownloads.astro';
+import TrustCta from '../../trust/TrustCta.astro';
+import { url, tt, type Locale } from '../../../i18n/config';
+interface Props { lang: Locale }
+const { lang } = Astro.props;
+const x = tt(lang);
+const r = x.report;
+const pages = [1, 2].map((n) => `/samples/drive/${lang}/health-report-2026-09-p${n}.jpg`);
+---
+<PageHero eyebrow={r.eyebrow} title={r.h1} lead={r.lead}>
+  <div class="btn-row" slot="actions">
+    <a class="btn btn--primary" href={`/downloads/health-report-example-${lang}.pdf`} download><TIcon name="download" /> {r.sampleTitle}</a>
+    <a class="btn btn--secondary" href={url(lang, 'pledge', '#example-drive')}><TIcon name="folderOpen" /> {x.pledge.driveTitle}</a>
+  </div>
+  <div slot="visual" class="hr-visual" aria-hidden="true">
+    <img src={pages[0]} alt="" width="595" height="842" />
+    <span class="hr-visual__ex">{x.common.example}</span>
+  </div>
+</PageHero>
+
+<section class="section">
+  <div class="container">
+    <ul class="hr-grid">
+      {r.sections.map((s, i) => (
+        <li class="card hr-card" data-reveal style={`transition-delay:${(i % 3) * 70}ms`}>
+          <span class="icon-badge"><TIcon name={s.icon} /></span>
+          <h3>{s.title}</h3>
+          <p>{s.text}</p>
+        </li>
+      ))}
+    </ul>
+  </div>
+</section>
+
+<section class="section section--surface">
+  <div class="container">
+    <SampleDownloads lang={lang} file="health-report" preview={pages} title={r.sampleTitle} text={r.sampleText} />
+    <div class="notice notice--info hr-when" role="note">
+      <TIcon name="calendar" />
+      <p><strong>{r.whenTitle}.</strong> <T text={r.when} /></p>
+    </div>
+  </div>
+</section>
+
+<TrustCta lang={lang} />
+
+<style>
+  .hr-visual { position: relative; display: grid; justify-items: center; }
+  .hr-visual img { inline-size: min(100%, 420px); block-size: auto; border-radius: 8px; box-shadow: 0 40px 80px -30px rgb(11 19 36 / .45), 0 0 0 1px var(--c-line); transform: rotate(-2deg); background: #fff; }
+  :global([dir='rtl']) .hr-visual img { transform: rotate(2deg); }
+  .hr-visual__ex { position: absolute; inset-block-start: -10px; inset-inline-end: 12%; font-size: 12px; font-weight: 800; letter-spacing: .08em; color: #b45309; background: #fff7ed; border: 1px solid #fed7aa; border-radius: 999px; padding: 3px 12px; box-shadow: var(--sh-sm); }
+  .hr-grid { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--sp-4); grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+  .hr-card h3 { font-size: var(--fs-md); }
+  .hr-card p { margin: 0; font-size: var(--fs-sm); }
+  .hr-when { margin-block-start: var(--sp-5); }
+</style>

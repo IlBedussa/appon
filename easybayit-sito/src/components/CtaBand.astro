@@ -1,0 +1,40 @@
+---
+// Fascia finale di invito all'azione, comune a tutte le pagine principali.
+import Icon from './Icon.astro';
+import { url, t, type Locale } from '../i18n/config';
+interface Props { lang: Locale }
+const { lang } = Astro.props;
+const d = t(lang);
+const h = d.pages.home;
+---
+<section class="section section--tight">
+  <div class="container">
+    <div class="cta-band">
+      <div>
+        <h2>{h.ctaTitle}</h2>
+        <p>{h.ctaText}</p>
+      </div>
+      <div class="btn-row">
+        <a class="btn btn--primary" href={url(lang, 'contact')}>{d.ui.cta} <Icon name="arrow" /></a>
+        <a class="btn btn--ghost-light" href={url(lang, 'pricing')}>{d.ui.ctaPricing}</a>
+      </div>
+    </div>
+  </div>
+</section>
+<style>
+  .cta-band {
+    display: grid; gap: var(--sp-5); align-items: center;
+    background: linear-gradient(135deg, #0b1324 0%, #13265c 100%); color: #d6deee;
+    border-radius: var(--r-xl); padding: var(--sp-7) var(--sp-6);
+    position: relative; overflow: hidden;
+  }
+  .cta-band::after {
+    content: ''; position: absolute; inset-inline-end: -80px; inset-block-start: -80px; inline-size: 260px; block-size: 260px;
+    border-radius: 50%; border: 40px solid rgb(94 234 212 / .12); pointer-events: none;
+  }
+  .cta-band h2 { color: #fff; font-size: var(--fs-xl); }
+  .cta-band p { margin: 0; max-inline-size: 56ch; }
+  .cta-band .btn--primary { background: #fff; color: var(--c-primary-700); }
+  .cta-band .btn--primary:hover { background: var(--c-primary-50); }
+  @media (min-width: 900px) { .cta-band { grid-template-columns: 1fr auto; padding: var(--sp-7) var(--sp-8); } }
+</style>

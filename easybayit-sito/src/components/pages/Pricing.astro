@@ -1,0 +1,114 @@
+---
+// Listino pubblico: livelli di ESEMPIO, calcolatore con IVA e valute, benchmark con fonti, garanzie,
+// tabella incluso/extra (esistente) e domande frequenti sui prezzi.
+import Icon from '../Icon.astro';
+import T from '../T.astro';
+import PageHero from '../PageHero.astro';
+import CtaBand from '../CtaBand.astro';
+import TierCards from '../offer/TierCards.astro';
+import FeeCalculator from '../offer/FeeCalculator.astro';
+import Guarantees from '../offer/Guarantees.astro';
+import PricingTrust from '../trust/PricingTrust.astro';
+import Sources from '../Sources.astro';
+import { t, tx, type Locale } from '../../i18n/config';
+interface Props { lang: Locale }
+const { lang } = Astro.props;
+const d = t(lang);
+const p = d.pages.pricing;
+const x = tx(lang);
+const pp = x.offer.pricingPage;
+const c = x.offer.calc;
+---
+<PageHero eyebrow={pp.eyebrow} title={pp.h1} lead={pp.lead} compact>
+  <div class="notice" slot="actions" role="note" style="margin-block-start: var(--sp-4); max-inline-size: 60ch">
+    <Icon name="info" /><p><T text={x.common.exampleNote} /></p>
+  </div>
+</PageHero>
+
+<section class="section">
+  <div class="container">
+    <TierCards lang={lang} level={2} />
+  </div>
+</section>
+
+<section class="section section--surface" id="calculator">
+  <div class="container">
+    <div class="section-head" data-reveal>
+      <p class="eyebrow"><Icon name="wallet" /> {c.eyebrow}</p>
+      <h2>{c.title}</h2>
+      <p>{c.lead}</p>
+    </div>
+    <FeeCalculator lang={lang} />
+  </div>
+</section>
+
+<section class="section">
+  <div class="container">
+    <div class="card card--flat bench" data-reveal>
+      <h2><Icon name="chart" /> {x.offer.benchmarkTitle}</h2>
+      <p>{x.offer.benchmarkText}</p>
+      <Sources lang={lang} ids={['feesAgencyTlv', 'feesFlamingo', 'feesKaufman']} />
+    </div>
+  </div>
+</section>
+
+<Guarantees lang={lang} surface />
+<PricingTrust lang={lang} />
+
+<section class="section">
+  <div class="container">
+    <div class="section-head"><h2 id="table-title">{pp.tableTitle}</h2></div>
+    <div class="table-wrap" role="region" aria-labelledby="table-title" tabindex="0">
+      <table class="pricing-table">
+        <thead>
+          <tr>
+            <th scope="col">{p.colService}</th>
+            <th scope="col">{p.colIncluded}</th>
+            <th scope="col">{p.colExtra}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {p.rows.map((r) => (
+            <tr>
+              <th scope="row">{r.label}</th>
+              <td data-label={p.colIncluded}>{r.inc
+                ? <span class="badge badge--ok"><Icon name="check" /> {p.yes}</span>
+                : <span class="badge badge--no"><Icon name="x" /> {p.no}</span>}</td>
+              <td data-label={p.colExtra}><T text={r.extra} /></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section class="section section--surface">
+  <div class="container narrow">
+    <div class="section-head"><h2>{pp.faqTitle}</h2></div>
+    {pp.faq.map((f) => (
+      <details class="faq-item">
+        <summary>{f.q} <Icon name="plus" /></summary>
+        <p><T text={f.a} /></p>
+      </details>
+    ))}
+  </div>
+</section>
+
+<CtaBand lang={lang} />
+<style>
+  .bench { max-inline-size: 860px; }
+  .bench h2 { display: flex; align-items: center; gap: var(--sp-3); font-size: var(--fs-xl); }
+  .bench h2 :global(.icon) { color: var(--c-primary); }
+  .narrow { max-inline-size: 860px; }
+  .pricing-table td:nth-child(3) { color: var(--c-ink-2); }
+  .pricing-table th[scope='row'] { min-inline-size: 220px; }
+  @media (max-width: 639px) {
+    .pricing-table thead { position: absolute; inline-size: 1px; block-size: 1px; overflow: hidden; clip-path: inset(50%); }
+    .pricing-table tr { display: grid; grid-template-columns: 1fr; gap: var(--sp-2); padding: var(--sp-4); border-block-start: 1px solid var(--c-line); }
+    .pricing-table tbody tr:first-child { border-block-start: 0; }
+    .pricing-table th, .pricing-table td { border: 0; padding: 0; }
+    .pricing-table th[scope='row'] { min-inline-size: 0; font-weight: 600; font-size: var(--fs-md); }
+    .pricing-table td:nth-child(3)::before { content: attr(data-label) ': '; color: var(--c-muted); }
+  }
+</style>

@@ -1,0 +1,133 @@
+---
+// Gestione richiesta (staff): stato, note, preventivi (inviati al proprietario), foto.
+import AppLayout from '../../../layouts/AppLayout.astro';
+import MaintenanceDetail from '../../../components/MaintenanceDetail.astro';
+import Field from '../../../components/Field.astro';
+import Csrf from '../../../components/Csrf.astro';
+import Icon from '../../../components/Icon.astro';
+import Money from '../../../components/Money.astro';
+import Pill from '../../../components/Pill.astro';
+import { z, formToObject, optIsoDate } from '../../../lib/validation';
+import { setFlash } from '../../../lib/flash';
+import UploadField from '../../../components/UploadField.astro';
+import { finalizeUploads, uploadIdsFrom } from '../../../lib/direct-upload';
+import { dateTime } from '../../../lib/format';
+import { fill } from '../../../i18n';
+
+const { t, supabase, user, intl, profile } = Astro.locals;
+const id = z.uuid().safeParse(Astro.params.id);
+if (!id.success) return Astro.rewrite('/404');
+const self = `/admin/maintenance/${id.data}`;
+const statuses = ['reported', 'in_review', 'quote_pending', 'approved', 'scheduled', 'closed', 'cancelled'] as const;
+
+/** "Descrizione; importo" per riga -> voci del preventivo */
+function parseItems(src: string): { label: string; amount: number }[] | null {
+  const out: { label: string; amount: number }[] = [];
+  for (const raw of src.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line) continue;
+    const m = /^(.{1,120});\s*(-?[\d.,]+)$/.exec(line);
+    if (!m) return null;
+    const amount = Number(m[2].replace(/,/g, ''));
+    if (!Number.isFinite(amount) || amount < 0 || amount > 1_000_000) return null;
+    out.push({ label: m[1].trim(), amount: Math.round(amount * 100) / 100 });
+  }
+  return out.length && out.length <= 20 ? out : null;
+}
+
+if (Astro.request.method === 'POST') {
+  const fd = await Astro.request.formData();
+  const action = fd.get('action');
+  let ok = true, msg: string | null = null;
+  if (action === 'status') {
+    const p = z.object({ status: z.enum(statuses), scheduled_for: optIsoDate }).safeParse(formToObject(fd));
+    ok = p.success && !(await supabase.from('maintenance_requests').update({ status: p.data.status, scheduled_for: p.data.scheduled_for ?? null }).eq('id', id.data)).error;
+  } else if (action === 'note') {
+    const note = z.string().trim().min(1).max(2000).safeParse(fd.get('note'));
+    ok = note.success && !(await supabase.from('maintenance_events').insert({ request_id: id.data, note: note.data, actor_id: user!.id })).error;
+  } else if (action === 'quote') {
+    const supplier = z.string().trim().min(1).max(200).safeParse(fd.get('supplier'));
+    const items = parseItems(String(fd.get('items') ?? ''));
+    ok = supplier.success && !!items;
+    if (ok) {
+      const total = Math.round(items!.reduce((a, i) => a + i.amount, 0) * 100) / 100;
+      ok = !(await supabase.from('quotes').insert({ request_id: id.data, supplier: supplier.data, items, total_ils: total, created_by: user!.id })).error;
+    }
+  } else if (action === 'withdraw') {
+    const q = z.uuid().safeParse(fd.get('quote'));
+    ok = q.success && !(await supabase.from('quotes').update({ status: 'withdrawn' }).eq('id', q.data).eq('status', 'pending')).error;
+  } else if (action === 'photos') {
+    // file già caricati dal browser sullo storage: verifica e collegamento alla richiesta
+    const ids = uploadIdsFrom(fd);
+    const r = await finalizeUploads({ sb: supabase, userId: user!.id, role: profile!.role }, { kind: 'maintenance', requestId: id.data }, ids);
+    ok = ids.length > 0 && r.rejected.length === 0;
+    if (r.rejected.length) msg = fill(t.up.rejected, { n: r.rejected.length });
+  }
+  setFlash(Astro.cookies, ok ? 'success' : 'error', ok ? t.common.saved : (msg ?? t.common.invalid));
+  return Astro.redirect(self, 303);
+}
+
+const [{ data: req }, { data: photos }, { data: events }, { data: quotes }] = await Promise.all([
+  supabase.from('maintenance_requests').select('id, ref, title, source, availability, emergency, description, priority, status, created_at, scheduled_for, property:properties(code, name, owner:owners(full_name, approval_limit_ils)), tenant:tenants(full_name)').eq('id', id.data).maybeSingle(),
+  supabase.from('maintenance_photos').select('id, media_type, mime_type').eq('request_id', id.data).order('created_at'),
+  supabase.from('maintenance_events').select('id, status, note, created_at').eq('request_id', id.data).order('created_at'),
+  supabase.from('quotes').select('id, supplier, items, total_ils, status, decided_at, decision_note').eq('request_id', id.data).order('created_at', { ascending: false }),
+]);
+if (!req) return Astro.rewrite('/404');
+const owner = (req.property as any)?.owner;
+---
+<AppLayout title={`R-${req.ref}`} active="maintenance">
+  <p><a href="/admin/maintenance" class="link-sm">← {t.common.back}</a></p>
+  <p class="muted small">{t.common.owner}: {owner?.full_name} · {t.common.tenant}: {(req.tenant as any)?.full_name ?? '—'}</p>
+  <div class="grid-2 req-detail">
+    <div>
+      <MaintenanceDetail req={req as any} photos={photos ?? []} events={events ?? []} />
+      <form method="post" class="dcard stack-sm">
+        <Csrf /><input type="hidden" name="action" value="photos" />
+        <UploadField name="photos" kind="maintenance" targetId={req.id} label={t.admin.mt.addPhotos} required hint={t.pri.mediaHint} />
+        <button class="btn btn--secondary btn--sm" type="submit"><Icon name="camera" /> {t.common.submit}</button>
+      </form>
+    </div>
+    <div class="stack-sm">
+      <section class="dcard" aria-labelledby="h-st">
+        <h2 class="panel-h" id="h-st">{t.admin.mt.changeStatus}</h2>
+        <form method="post" class="form-grid">
+          <Csrf /><input type="hidden" name="action" value="status" />
+          <Field name="status" label={t.common.status} required value={req.status} options={statuses.map((s) => ({ value: s, label: t.maintStatus[s] }))} />
+          <Field name="scheduled_for" type="date" label={t.admin.mt.schedule} value={req.scheduled_for} />
+          <div class="form-actions span-2"><button class="btn btn--primary btn--sm" type="submit">{t.common.save}</button></div>
+        </form>
+      </section>
+      <section class="dcard" aria-labelledby="h-note">
+        <h2 class="panel-h" id="h-note">{t.admin.mt.addNote}</h2>
+        <form method="post" class="stack-sm">
+          <Csrf /><input type="hidden" name="action" value="note" />
+          <Field name="note" label={t.common.notes} textarea required maxlength={2000} />
+          <button class="btn btn--secondary btn--sm" type="submit">{t.common.save}</button>
+        </form>
+      </section>
+      {(quotes ?? []).map((q) => (
+        <section class="quote dcard">
+          <div class="quote-head"><Icon name="doc" /><span><strong>{q.supplier}</strong><small>{q.decided_at ? dateTime(q.decided_at, intl) : ''} {q.decision_note ?? ''}</small></span>
+            <span class="ms-auto"><Pill tone={q.status === 'approved' ? 'ok' : q.status === 'rejected' ? 'urgent' : q.status === 'pending' ? 'warn' : 'neutral'}>{(t.quoteStatus as Record<string, string>)[q.status]}</Pill></span></div>
+          <ul class="quote-rows">
+            {(q.items as { label: string; amount: number }[]).map((it) => <li><span>{it.label}</span><Money v={it.amount} /></li>)}
+            <li class="quote-total"><span>{t.common.total}</span><Money v={q.total_ils} /></li>
+          </ul>
+          {owner && <p class="q-rule"><Icon name="info" /> {Number(q.total_ils) > Number(owner.approval_limit_ils) ? t.admin.mt.overLimit : t.admin.mt.underLimit}</p>}
+          {q.status === 'pending' && <form method="post"><Csrf /><input type="hidden" name="action" value="withdraw" /><input type="hidden" name="quote" value={q.id} />
+            <button class="btn btn--secondary btn--xs" type="submit">{t.quoteStatus.withdrawn}</button></form>}
+        </section>
+      ))}
+      <section class="dcard" aria-labelledby="h-q">
+        <h2 class="panel-h" id="h-q">{t.admin.mt.addQuote}</h2>
+        <form method="post" class="stack-sm">
+          <Csrf /><input type="hidden" name="action" value="quote" />
+          <Field name="supplier" label={t.maint.supplier} required maxlength={200} />
+          <Field name="items" label={t.admin.mt.items} textarea required hint={t.admin.mt.itemsHint} maxlength={3000} placeholder={'Labour; 650\nParts; 1200'} />
+          <button class="btn btn--primary btn--sm" type="submit">{t.common.submit}</button>
+        </form>
+      </section>
+    </div>
+  </div>
+</AppLayout>

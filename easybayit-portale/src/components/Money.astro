@@ -1,0 +1,11 @@
+---
+// Importo nella valuta scelta dall'utente (conversione BOI), con l'importo ILS esatto nel tooltip.
+import { money, ils } from '../lib/format';
+interface Props { v: number | string | null | undefined; signed?: boolean; compact?: boolean; class?: string }
+const { v, signed = false, compact = false, class: cls } = Astro.props;
+const { intl, currency, fx } = Astro.locals;
+const n = Number(v ?? 0);
+const shown = money(n, intl, currency, fx, { signed, compact });
+const exact = ils(n, intl);
+---
+<span class:list={['money', cls]} title={currency !== 'ILS' && fx ? exact : undefined} data-ils={n}>{shown}</span>

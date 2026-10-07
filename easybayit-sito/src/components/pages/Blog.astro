@@ -1,0 +1,85 @@
+---
+// Indice del blog /blog/ (per lingua): filtri per tema (progressivi, funzionano anche senza JS) + griglia articoli.
+import PageHero from '../PageHero.astro';
+import CtaBand from '../CtaBand.astro';
+import Icon from '../Icon.astro';
+import PostCard from '../blog/PostCard.astro';
+import { tb, url, navLabel, type Locale } from '../../i18n/config';
+import { getPosts } from '../../lib/blog';
+import { SHOW_DRAFTS } from '../../config/flags';
+interface Props { lang: Locale }
+const { lang } = Astro.props;
+const b = tb(lang);
+const posts = await getPosts(lang);
+const clusters = [...new Set(posts.map((p) => p.data.cluster))];
+const hasDrafts = posts.some((p) => p.data.draft);
+---
+<PageHero eyebrow={b.eyebrow} title={b.h1} lead={b.lead}>
+  {SHOW_DRAFTS && hasDrafts && (
+    <p slot="actions" class="bl-draftnote"><span class="bl-draft">{b.draftBadge}</span> {b.draftNote}</p>
+  )}
+</PageHero>
+
+<section class="section">
+  <div class="container">
+    {posts.length === 0 ? (
+      <div class="card bl-empty">
+        <p>{b.empty}</p>
+        <div class="btn-row">
+          <a class="btn btn--primary" href={url(lang, 'guide')}>{navLabel(lang, 'guide')} <Icon name="arrow" /></a>
+          <a class="btn btn--secondary" href={url(lang, 'legal')}>{b.legalHub}</a>
+        </div>
+      </div>
+    ) : (
+      <>
+        {clusters.length > 1 && (
+          <div class="bl-filters" role="group" aria-label={b.allTopics} hidden data-bl-filters>
+            <button type="button" class="bl-filter" aria-pressed="true" data-c="">{b.allTopics}</button>
+            {clusters.map((c) => <button type="button" class="bl-filter" aria-pressed="false" data-c={c}>{b.clusters[c] ?? c}</button>)}
+          </div>
+        )}
+        <ul class="bl-grid" role="list">
+          {posts.map((p) => <li data-cluster={p.data.cluster}><PostCard post={p} lang={lang} headingLevel="h2" /></li>)}
+        </ul>
+        <p class="bl-hub"><Icon name="shield" /> <a href={url(lang, 'legal')}>{b.legalHub}</a></p>
+      </>
+    )}
+  </div>
+</section>
+
+<CtaBand lang={lang} />
+
+<script>
+  // Filtro per tema: mostra i pulsanti solo con JS; senza JS la lista resta completa.
+  const box = document.querySelector<HTMLElement>('[data-bl-filters]');
+  if (box) {
+    box.hidden = false;
+    const items = [...document.querySelectorAll<HTMLElement>('.bl-grid > li')];
+    box.addEventListener('click', (e) => {
+      const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('.bl-filter');
+      if (!btn) return;
+      box.querySelectorAll('.bl-filter').forEach((b) => b.setAttribute('aria-pressed', String(b === btn)));
+      const c = btn.dataset.c;
+      items.forEach((li) => (li.hidden = !!c && li.dataset.cluster !== c));
+    });
+  }
+</script>
+<style>
+  .bl-draftnote { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-block-start: var(--sp-4); font-size: var(--fs-sm); color: var(--c-warning); }
+  .bl-filters { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-block-end: var(--sp-5); }
+  .bl-filter {
+    font: inherit; font-size: var(--fs-sm); font-weight: 600; cursor: pointer;
+    min-block-size: 40px; padding: 6px 16px; border-radius: var(--r-pill);
+    border: 1px solid var(--c-line-strong); background: #fff; color: var(--c-ink-2);
+  }
+  .bl-filter:hover { border-color: var(--c-ink); color: var(--c-ink); }
+  .bl-filter:focus-visible { outline: none; box-shadow: var(--focus); }
+  .bl-filter[aria-pressed='true'] { background: var(--c-ink); border-color: var(--c-ink); color: #fff; }
+  .bl-grid { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--sp-5); grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); }
+  .bl-grid > li { display: grid; }
+  .bl-grid > li[hidden] { display: none; }
+  .bl-hub { display: flex; gap: 8px; align-items: center; margin-block-start: var(--sp-6); font-weight: 600; }
+  .bl-hub :global(.icon) { color: var(--c-secondary); }
+  .bl-empty { display: grid; gap: var(--sp-4); max-inline-size: 720px; }
+  .bl-empty p { margin: 0; font-size: var(--fs-md); }
+</style>

@@ -1,0 +1,46 @@
+---
+// Notifiche dell'utente (RLS: solo le proprie). "Segna tutte come lette" aggiorna solo read_at.
+import AppLayout from '../layouts/AppLayout.astro';
+import Csrf from '../components/Csrf.astro';
+import Icon from '../components/Icon.astro';
+import { notificationText } from '../lib/notify-text';
+import { dateTime } from '../lib/format';
+import { safeNext } from '../lib/session';
+
+const { t, supabase, user, intl } = Astro.locals;
+if (Astro.request.method === 'POST') {
+  const fd = await Astro.request.formData();
+  const id = String(fd.get('id') ?? '');
+  const q = supabase.from('notifications').update({ read_at: new Date().toISOString() }).is('read_at', null).eq('profile_id', user!.id);
+  if (/^[0-9a-f-]{36}$/.test(id)) {
+    await q.eq('id', id);
+    return Astro.redirect(safeNext(String(fd.get('link') ?? ''), '/notifications'), 303);
+  }
+  await q;
+  return Astro.redirect('/notifications', 303);
+}
+const { data: items } = await supabase.from('notifications').select('*').order('created_at', { ascending: false }).limit(100);
+const icon = (k: string) => (k.startsWith('maint') ? 'tool' : k.startsWith('quote') ? 'wallet' : k.startsWith('statement') ? 'chart' : k.startsWith('document') ? 'doc' : 'info');
+---
+<AppLayout title={t.notif.title} active="notifications">
+  <div class="panel-bar">
+    <h2 class="panel-h">{t.notif.title}</h2>
+    <form method="post"><Csrf /><button type="submit" class="btn btn--secondary btn--sm">{t.notif.markAll}</button></form>
+  </div>
+  {(items ?? []).length === 0 ? <p class="empty">{t.notif.empty}</p> : (
+    <ul class="dcard notif-list flush">
+      {items!.map((n) => (
+        <li class:list={['notif', { unread: !n.read_at }]}>
+          <span class="notif-ico"><Icon name={icon(n.kind)} /></span>
+          <span class="notif-text">
+            {n.link ? (
+              <form method="post" class="inline-form"><Csrf /><input type="hidden" name="id" value={n.id} /><input type="hidden" name="link" value={n.link} />
+                <button type="submit" class="link-btn notif-link">{notificationText(n.kind, n.params, t, intl)}</button></form>
+            ) : notificationText(n.kind, n.params, t, intl)}
+          </span>
+          <small>{dateTime(n.created_at, intl)}</small>
+        </li>
+      ))}
+    </ul>
+  )}
+</AppLayout>

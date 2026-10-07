@@ -1,0 +1,10 @@
+---
+import AuthLayout from '../layouts/AuthLayout.astro';
+const { t } = Astro.locals;
+Astro.response.status = 404;
+---
+<AuthLayout title={t.errors.notFoundTitle}>
+  <h1>{t.errors.notFoundTitle}</h1>
+  <p class="sub">{t.errors.notFoundText}</p>
+  <p><a class="btn btn--primary" href="/">{t.common.home}</a></p>
+</AuthLayout>

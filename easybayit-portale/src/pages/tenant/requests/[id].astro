@@ -1,0 +1,42 @@
+---
+// Dettaglio richiesta per l'inquilino (senza importi dei preventivi: RLS li nasconde).
+import AppLayout from '../../../layouts/AppLayout.astro';
+import MaintenanceDetail from '../../../components/MaintenanceDetail.astro';
+import Csrf from '../../../components/Csrf.astro';
+import Icon from '../../../components/Icon.astro';
+import UploadField from '../../../components/UploadField.astro';
+import { z } from '../../../lib/validation';
+import { finalizeUploads, uploadIdsFrom } from '../../../lib/direct-upload';
+import { setFlash } from '../../../lib/flash';
+import { fill } from '../../../i18n';
+
+const { t, supabase, user, profile } = Astro.locals;
+const id = z.uuid().safeParse(Astro.params.id);
+if (!id.success) return Astro.rewrite('/404');
+if (Astro.request.method === 'POST') {
+  // file già caricati dal browser sullo storage: verifica e collegamento alla richiesta (RLS: solo richieste proprie e aperte)
+  const ids = uploadIdsFrom(await Astro.request.formData());
+  const r = await finalizeUploads({ sb: supabase, userId: user!.id, role: profile!.role }, { kind: 'maintenance', requestId: id.data }, ids);
+  const ok = ids.length > 0 && r.rejected.length === 0;
+  setFlash(Astro.cookies, ok ? 'success' : 'error', ok ? t.common.saved : r.rejected.length ? fill(t.up.rejected, { n: r.rejected.length }) : t.common.invalid);
+  return Astro.redirect(`/tenant/requests/${id.data}`, 303);
+}
+const [{ data: req }, { data: photos }, { data: events }] = await Promise.all([
+  supabase.from('maintenance_requests').select('id, ref, title, source, availability, emergency, description, priority, status, created_at, scheduled_for, property:properties(code, name)').eq('id', id.data).maybeSingle(),
+  supabase.from('maintenance_photos').select('id, media_type, mime_type').eq('request_id', id.data).order('created_at'),
+  supabase.from('maintenance_events').select('id, status, note, created_at').eq('request_id', id.data).order('created_at'),
+]);
+if (!req) return Astro.rewrite('/404');
+const open = !['closed', 'cancelled'].includes(req.status);
+---
+<AppLayout title={`R-${req.ref}`} active="requests">
+  <p><a href="/tenant/requests" class="link-sm">← {t.common.back}</a></p>
+  <MaintenanceDetail req={req as any} photos={photos ?? []} events={events ?? []} />
+  {open && (
+    <form method="post" class="dcard stack-sm">
+      <Csrf />
+      <UploadField name="photos" kind="maintenance" targetId={req.id} label={t.admin.mt.addPhotos} hint={t.pri.mediaHint} required />
+      <button type="submit" class="btn btn--secondary btn--sm"><Icon name="camera" /> {t.common.submit}</button>
+    </form>
+  )}
+</AppLayout>

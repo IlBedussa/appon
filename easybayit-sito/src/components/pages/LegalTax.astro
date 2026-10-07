@@ -1,0 +1,281 @@
+---
+// Hub "Legale & Fiscale": quadro normativo e fiscale per proprietari (residenti e non residenti),
+// ogni affermazione con fonte ufficiale e data di verifica. Include checklist stampabile/PDF,
+// servizio "pacchetto fiscale annuale", rete di professionisti (segnaposto) e articoli del blog correlati.
+import Icon from '../Icon.astro';
+import T from '../T.astro';
+import PageHero from '../PageHero.astro';
+import CtaBand from '../CtaBand.astro';
+import Sources from '../Sources.astro';
+import PostCard from '../blog/PostCard.astro';
+import { url, tl, tb, type Locale } from '../../i18n/config';
+import { getPosts } from '../../lib/blog';
+import { instLogo } from '../../lib/instLogos';
+import { sources } from '../../data/market';
+import { tx } from '../../i18n/config';
+interface Props { lang: Locale }
+const { lang } = Astro.props;
+const L = tl(lang);
+const b = tb(lang);
+const pdf = `/downloads/compliance-checklist-${lang}.pdf`;
+// Articoli correlati: prima quelli su leggi/tasse, poi gli altri (max 3).
+const posts = (await getPosts(lang))
+  .sort((a, b2) => Number(/law|tax/.test(b2.data.translationKey)) - Number(/law|tax/.test(a.data.translationKey)))
+  .slice(0, 3);
+type Sec = (typeof L.sections)[number] & { note?: string };
+const sections = L.sections as Sec[];
+// Riquadro dell'hero: fonti ufficiali principali con data di verifica (+ loghi solo a flag acceso).
+const c = tx(lang).common;
+// Loghi piccoli (22px) accanto all'ente, SOLO con SHOW_TEST_LOGOS=1: instLogo() restituisce null a flag spento.
+const ITA = instLogo('ita');
+const PPA = instLogo('ppa');
+const heroSrc: { sec: string; id: keyof typeof sources; who: string; logo: { src: string; alt: string } | null }[] = [
+  { sec: 'rental-tax', id: 'itaBooklet2026', who: 'Israel Tax Authority', logo: ITA },
+  { sec: 'withholding', id: 'itaWithholding2026', who: 'Israel Tax Authority', logo: ITA },
+  { sec: 'vat', id: 'itaVat18', who: 'Israel Tax Authority', logo: ITA },
+  { sec: 'fair-rental', id: 'knessetFairRental2017', who: 'Knesset', logo: null },
+  { sec: 'privacy', id: 'ppaAmendment13', who: 'Privacy Protection Authority', logo: PPA },
+];
+const hasLogos = heroSrc.some((h) => h.logo);
+---
+<PageHero eyebrow={L.eyebrow} title={L.h1} lead={L.lead}>
+  <div slot="visual" class="lt-visual" aria-label={L.sourcesTitle}>
+    <div class="lt-visual__card">
+      <p class="lt-visual__t"><Icon name="shield" /> {L.sourcesTitle}</p>
+      <ul>
+        {heroSrc.map((h) => {
+          const s0 = sources[h.id] as { checked?: string; url: string };
+          const sec = sections.find((x) => x.id === h.sec)!;
+          return (
+            <li>
+              <a href={`#${h.sec}`}>
+                <strong>{sec.title}</strong>
+                <span class="lt-visual__who" lang="en" dir="ltr">
+                  {h.logo && <img src={h.logo.src} alt="" width="22" height="22" />}{h.who}
+                </span>
+              </a>
+              <span class="lt-visual__ok"><Icon name="check" /> {s0.checked ? c.checkedOn.replace('{date}', s0.checked) : ''}</span>
+            </li>
+          );
+        })}
+      </ul>
+      {hasLogos && <p class="lt-visual__test" lang="en" dir="ltr">⚠ TEST – remove before publishing · logos not an endorsement</p>}
+    </div>
+  </div>
+  <div slot="actions" class="lt-hero-actions">
+    <div class="notice" role="note"><Icon name="info" /><p><strong><T text={L.disclaimer} /></strong></p></div>
+    <p class="lt-review"><Icon name="clock" /> {L.lastReview} · <T text={L.verifyNote} /></p>
+    <div class="btn-row">
+      <a class="btn btn--primary" href="#checklist"><Icon name="check" /> {L.checklist.title}</a>
+      <a class="btn btn--secondary" href={pdf} download><Icon name="download" /> {L.checklist.download}</a>
+    </div>
+  </div>
+</PageHero>
+
+<section class="section lt-main">
+  <div class="container lt-layout">
+    <aside class="lt-aside">
+      <nav class="card card--flat lt-toc" aria-labelledby="lt-toc-t">
+        <h2 id="lt-toc-t">{L.tocTitle}</h2>
+        <ol>
+          {sections.map((s) => <li><a href={`#${s.id}`}>{s.title}</a></li>)}
+          <li><a href="#checklist">{L.checklist.title}</a></li>
+          <li><a href="#tax-pack">{L.taxPack.title}</a></li>
+          <li><a href="#partners">{L.partners.eyebrow}</a></li>
+          {posts.length > 0 && <li><a href="#reading">{b.hubTitle}</a></li>}
+        </ol>
+      </nav>
+    </aside>
+    <div class="lt-body">
+      {sections.map((s) => (
+        <section id={s.id} class="lt-sec" aria-labelledby={`${s.id}-t`} data-reveal>
+          <div class="lt-sec__head">
+            <span class="lt-sec__icon" aria-hidden="true"><Icon name={s.icon as never} /></span>
+            <h2 id={`${s.id}-t`}>{s.title}</h2>
+          </div>
+          <div class="lt-items">
+            {s.items.map((it) => (
+              <div class="lt-item">
+                <h3>{it.h}</h3>
+                <p><T text={it.p} /></p>
+              </div>
+            ))}
+          </div>
+          {s.note && <p class="lt-note"><T text={s.note} /></p>}
+          {s.sources.length > 0 && <Sources lang={lang} ids={s.sources as string[]} title={L.sourcesTitle} compact />}
+        </section>
+      ))}
+    </div>
+  </div>
+</section>
+
+<section id="checklist" class="section section--surface lt-check" aria-labelledby="check-t">
+  <div class="container">
+    <div class="lt-check__head">
+      <div>
+        <p class="eyebrow">{L.checklist.eyebrow}</p>
+        <h2 id="check-t">{L.checklist.title}</h2>
+        <p class="lt-check__lead">{L.checklist.lead}</p>
+      </div>
+      <div class="btn-row lt-noprint">
+        <a class="btn btn--primary" href={pdf} download><Icon name="download" /> {L.checklist.download}</a>
+        <button type="button" class="btn btn--secondary" data-print-checklist><Icon name="doc" /> {L.checklist.print}</button>
+      </div>
+    </div>
+    <div class="lt-groups">
+      {L.checklist.groups.map((g, gi) => (
+        <div class="lt-group card">
+          <h3><span class="lt-group__n tnum">{gi + 1}</span> {g.title}</h3>
+          <ul>{g.items.map((i) => <li><span class="lt-box" aria-hidden="true"></span><span><T text={i} /></span></li>)}</ul>
+        </div>
+      ))}
+    </div>
+    <p class="lt-check__foot"><T text={L.checklist.footer} /> <span class="lt-printonly">— {L.lastReview}</span></p>
+  </div>
+</section>
+
+<section id="tax-pack" class="section lt-pack" aria-labelledby="pack-t">
+  <div class="container lt-pack__grid">
+    <div>
+      <p class="eyebrow">{L.taxPack.eyebrow}</p>
+      <h2 id="pack-t">{L.taxPack.title}</h2>
+      <p class="lt-lead"><T text={L.taxPack.lead} /></p>
+      <p class="lt-when"><Icon name="clock" /> <span><T text={L.taxPack.when} /></span></p>
+      <a class="btn btn--primary" href={url(lang, 'pricing')}>{tb(lang).ctaSecondary} <Icon name="arrow" /></a>
+    </div>
+    <ul class="lt-pack__list card">
+      {L.taxPack.items.map((i) => <li><Icon name="check" /><span><T text={i} /></span></li>)}
+    </ul>
+  </div>
+</section>
+
+<section id="partners" class="section section--surface" aria-labelledby="partners-t">
+  <div class="container">
+    <div class="section-head">
+      <p class="eyebrow">{L.partners.eyebrow}</p>
+      <h2 id="partners-t">{L.partners.title}</h2>
+      <p><T text={L.partners.lead} /></p>
+    </div>
+    <ul class="lt-partners" role="list">
+      {L.partners.cards.map((c) => (
+        <li class="card lt-partner">
+          <span class="lt-sec__icon" aria-hidden="true"><Icon name={c.icon as never} /></span>
+          <h3>{c.role}</h3>
+          <p>{c.text}</p>
+          <p class="lt-partner__name"><T text={L.partners.placeholder} /></p>
+        </li>
+      ))}
+    </ul>
+  </div>
+</section>
+
+{posts.length > 0 && (
+  <section id="reading" class="section" aria-labelledby="reading-t">
+    <div class="container">
+      <div class="section-head">
+        <p class="eyebrow">{b.eyebrow}</p>
+        <h2 id="reading-t">{b.hubTitle}</h2>
+        <p>{b.hubLead}</p>
+      </div>
+      <ul class="lt-reading" role="list">{posts.map((p) => <li><PostCard post={p} lang={lang} /></li>)}</ul>
+      <p><a class="btn btn--secondary" href={url(lang, 'blog')}>{b.back} <Icon name="arrow" /></a></p>
+    </div>
+  </section>
+)}
+
+<CtaBand lang={lang} />
+
+<script is:inline>
+  // Modalità stampa della sola checklist: ?print=checklist (usata anche per generare i PDF) o pulsante "Stampa".
+  if (new URLSearchParams(location.search).get('print') === 'checklist') document.documentElement.classList.add('print-checklist');
+</script>
+<script>
+  document.querySelector('[data-print-checklist]')?.addEventListener('click', () => {
+    const html = document.documentElement;
+    html.classList.add('print-checklist');
+    addEventListener('afterprint', () => html.classList.remove('print-checklist'), { once: true });
+    print();
+  });
+</script>
+
+<style>
+  .lt-visual { display: grid; place-items: center; isolation: isolate; }
+  .lt-visual__card { inline-size: min(100%, 460px); background: #fff; border: 1px solid var(--c-line); border-radius: var(--r-xl); box-shadow: var(--sh-lg); padding: var(--sp-5); position: relative; }
+  .lt-visual__card::before { content: ''; position: absolute; inset: 14px -14px -14px 14px; z-index: -1; border-radius: inherit; background: linear-gradient(135deg, var(--c-primary-100), var(--c-secondary-50)); }
+  .lt-visual__t { display: flex; gap: 8px; align-items: center; margin: 0 0 var(--sp-3); font-weight: 700; color: var(--c-ink); }
+  .lt-visual__t :global(.icon) { color: var(--c-secondary); }
+  .lt-visual ul { list-style: none; margin: 0; padding: 0; display: grid; }
+  .lt-visual li { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 4px var(--sp-3); padding-block: 10px; border-block-start: 1px solid var(--c-line); }
+  .lt-visual li a { display: grid; gap: 2px; text-decoration: none; min-inline-size: 0; flex: 1 1 220px; }
+  .lt-visual li strong { color: var(--c-ink); font-size: var(--fs-sm); }
+  .lt-visual li a span { font-size: var(--fs-xs); color: var(--c-muted); }
+  .lt-visual li a:hover strong { color: var(--c-primary); }
+  .lt-visual__ok { display: inline-flex; gap: 4px; align-items: center; flex: none; font-size: 11px; font-weight: 600; color: var(--c-success); background: var(--c-success-50); border-radius: var(--r-pill); padding: 2px 8px; white-space: nowrap; }
+  .lt-visual__ok :global(.icon) { inline-size: 12px; block-size: 12px; }
+  .lt-visual__who { display: inline-flex; align-items: center; gap: 6px; justify-self: start; }
+  .lt-visual__who img { inline-size: 22px; block-size: 22px; object-fit: contain; border-radius: 4px; outline: 1.5px dashed #dc2626; outline-offset: 1px; background: #fff; }
+  .lt-visual__test { margin: var(--sp-3) 0 0; font-size: 10px; font-weight: 700; color: #b91c1c; text-align: center; }
+  @media (max-width: 1023px) { .lt-visual__card::before { display: none; } }
+  .lt-hero-actions { display: grid; gap: var(--sp-4); margin-block-start: var(--sp-5); max-inline-size: 70ch; }
+  /* Riga "ultima revisione": testo continuo (niente flex, che su mobile spezzava icona e marcatore su righe separate). */
+  .lt-review { margin: 0; font-size: var(--fs-sm); line-height: 1.6; color: var(--c-muted); }
+  .lt-review :global(.icon) { display: inline-block; inline-size: 1em; block-size: 1em; vertical-align: -0.15em; margin-inline-end: 4px; }
+  .lt-layout { display: grid; gap: var(--sp-6); align-items: start; }
+  @media (min-width: 1024px) {
+    .lt-layout { grid-template-columns: 280px minmax(0, 1fr); }
+    .lt-aside { position: sticky; inset-block-start: calc(var(--header-h) + var(--sp-4)); }
+  }
+  .lt-toc h2 { font-size: var(--fs-md); }
+  .lt-toc ol { margin: 0; padding-inline-start: 1.2em; display: grid; gap: 6px; font-size: var(--fs-sm); }
+  .lt-body { display: grid; gap: var(--sp-5); min-inline-size: 0; }
+  .lt-sec { background: #fff; border: 1px solid var(--c-line); border-radius: var(--r-lg); padding: var(--sp-5); scroll-margin-block-start: calc(var(--header-h) + 16px); }
+  @media (min-width: 720px) { .lt-sec { padding: var(--sp-6); } }
+  .lt-sec__head { display: flex; gap: var(--sp-3); align-items: center; margin-block-end: var(--sp-4); }
+  .lt-sec__head h2 { margin: 0; font-size: var(--fs-lg); }
+  .lt-sec__icon { display: grid; place-items: center; flex: none; inline-size: 44px; block-size: 44px; border-radius: 12px; background: var(--c-primary-50); color: var(--c-primary); }
+  .lt-items { display: grid; gap: var(--sp-4); }
+  @media (min-width: 900px) { .lt-items { grid-template-columns: 1fr 1fr; } }
+  .lt-item h3 { font-size: var(--fs-md); margin-block-end: var(--sp-1); }
+  .lt-item p { margin: 0; color: var(--c-ink-2); font-size: var(--fs-sm); line-height: 1.65; }
+  .lt-note { margin: var(--sp-4) 0 0; font-size: var(--fs-sm); color: var(--c-muted); }
+
+  .lt-check__head { display: grid; gap: var(--sp-4); align-items: end; margin-block-end: var(--sp-6); }
+  @media (min-width: 900px) { .lt-check__head { grid-template-columns: 1fr auto; } }
+  .lt-check__lead { color: var(--c-muted); font-size: var(--fs-lg); margin: 0; }
+  .lt-groups { display: grid; gap: var(--sp-4); grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr)); }
+  .lt-group h3 { display: flex; gap: var(--sp-2); align-items: center; font-size: var(--fs-md); }
+  .lt-group__n { display: grid; place-items: center; inline-size: 28px; block-size: 28px; border-radius: 50%; background: var(--c-secondary); color: #fff; font-size: var(--fs-sm); flex: none; }
+  .lt-group ul { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--sp-2); }
+  .lt-group li { display: flex; gap: var(--sp-2); align-items: flex-start; font-size: var(--fs-sm); color: var(--c-ink-2); }
+  .lt-box { flex: none; inline-size: 16px; block-size: 16px; margin-block-start: .25em; border: 2px solid var(--c-line-strong); border-radius: 4px; background: #fff; }
+  .lt-check__foot { margin: var(--sp-5) 0 0; font-size: var(--fs-xs); color: var(--c-muted); }
+  .lt-printonly { display: none; }
+
+  .lt-pack__grid { display: grid; gap: var(--sp-6); align-items: center; }
+  @media (min-width: 960px) { .lt-pack__grid { grid-template-columns: 1fr 1fr; } }
+  .lt-lead { font-size: var(--fs-lg); color: var(--c-ink-2); }
+  .lt-when { display: flex; gap: 8px; align-items: flex-start; color: var(--c-muted); font-size: var(--fs-sm); }
+  .lt-pack__list { list-style: none; margin: 0; display: grid; gap: var(--sp-3); }
+  .lt-pack__list li { display: flex; gap: var(--sp-3); align-items: flex-start; color: var(--c-ink-2); }
+  .lt-pack__list :global(.icon) { color: var(--c-success); flex: none; margin-block-start: .2em; }
+
+  .lt-partners { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--sp-4); grid-template-columns: repeat(auto-fill, minmax(min(100%, 210px), 1fr)); }
+  .lt-partner { display: grid; gap: var(--sp-2); align-content: start; }
+  .lt-partner h3 { font-size: var(--fs-md); margin: var(--sp-2) 0 0; }
+  .lt-partner p { margin: 0; font-size: var(--fs-sm); }
+  .lt-partner__name { margin-block-start: var(--sp-2) !important; }
+  .lt-reading { list-style: none; margin: 0 0 var(--sp-5); padding: 0; display: grid; gap: var(--sp-5); grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); }
+  .lt-reading > li { display: grid; }
+
+  /* Stampa: modalità "solo checklist" (pulsante Stampa / ?print=checklist / generazione PDF). */
+  @media print {
+    :global(html.print-checklist body > *:not(main)), :global(html.print-checklist main > *:not(#checklist)) { display: none !important; }
+    :global(html.print-checklist) .lt-noprint { display: none !important; }
+    :global(html.print-checklist) .lt-check { padding: 0; background: #fff; }
+    :global(html.print-checklist) .lt-groups { grid-template-columns: 1fr 1fr; gap: 10px; }
+    :global(html.print-checklist) .lt-group { break-inside: avoid; box-shadow: none; padding: 12px 14px; }
+    :global(html.print-checklist) .lt-check__head { margin-block-end: 12px; }
+    :global(html.print-checklist) .lt-printonly { display: inline; }
+    .lt-sec { break-inside: avoid; }
+  }
+</style>

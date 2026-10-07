@@ -1,0 +1,8 @@
+---
+// Messaggio di esito dopo un'azione (annunciato agli screen reader).
+interface Props { flash?: { type: 'success' | 'error' | 'info'; text: string } | null }
+const f = Astro.props.flash ?? Astro.locals.flash;
+---
+{f && (
+  <p class="form-status flash" data-type={f.type} role={f.type === 'error' ? 'alert' : 'status'}>{f.text}</p>
+)}

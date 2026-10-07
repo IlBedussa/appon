@@ -1,0 +1,180 @@
+---
+// Header con menu a gruppi (disclosure accessibili: <button aria-expanded> + elenco di link).
+// Desktop (≥1280px): i gruppi si aprono a tendina (click, tastiera; senza JS anche con hover/focus).
+// Mobile: pannello a scomparsa con i gruppi sempre espansi.
+// Nessun selettore lingua: la lingua è scelta automaticamente all'ingresso (src/lib/geo-lang.mjs); link manuali nel footer.
+import Logo from './Logo.astro';
+import Icon from './Icon.astro';
+import { url, t, tx, navLabel, type Locale, type PageKey } from '../i18n/config';
+interface Props { lang: Locale; page: PageKey; alternates?: Partial<Record<Locale, string>> }
+const { lang, page } = Astro.props;
+const d = t(lang);
+const n = tx(lang).nav;
+
+type Item = { kind: 'link'; key: PageKey } | { kind: 'group'; id: string; label: string; keys: PageKey[] };
+const items: Item[] = [
+  { kind: 'group', id: 'services', label: n.groups.services, keys: ['owners', 'care', 'b2b', 'tenants', 'pledge', 'switching'] },
+  { kind: 'link', key: 'pricing' },
+  { kind: 'link', key: 'how' },
+  { kind: 'group', id: 'cities', label: n.groups.cities, keys: ['city-jerusalem', 'city-beit-shemesh', 'city-raanana', 'city-netanya', 'city-tel-aviv', 'cities'] },
+  { kind: 'group', id: 'tools', label: n.groups.tools, keys: ['rent', 'yield', 'guide', 'legal', 'blog'] },
+  { kind: 'group', id: 'platform', label: n.groups.platform, keys: ['portal', 'demo', 'technology'] },
+  { kind: 'link', key: 'about' },
+];
+const label = (k: PageKey) => (k === 'owners' ? n.owners : k === 'pricing' ? n.pricing : navLabel(lang, k));
+const isCurrent = (k: PageKey) => k === page;
+---
+<header class="site-header">
+  <div class="container site-header__inner">
+    <a href={url(lang, 'home')} class="site-header__logo" aria-label={`Easybayit — ${d.nav.home}`}>
+      <Logo />
+    </a>
+
+    <button class="menu-btn" type="button" aria-expanded="false" aria-controls="site-menu"
+      data-open-label={d.ui.openMenu} data-close-label={d.ui.closeMenu}>
+      <span class="menu-btn__open"><Icon name="menu" /></span>
+      <span class="menu-btn__close"><Icon name="close" /></span>
+      <span class="visually-hidden menu-btn__label">{d.ui.openMenu}</span>
+    </button>
+
+    <div class="site-menu" id="site-menu">
+      <nav aria-label={d.ui.mainNav}>
+        <ul class="nav-list">
+          {items.map((it) => it.kind === 'link' ? (
+            <li><a class="nav-top" href={url(lang, it.key)} aria-current={isCurrent(it.key) ? 'page' : undefined}>{label(it.key)}</a></li>
+          ) : (
+            <li class:list={['nav-group', { 'nav-group--active': it.keys.some(isCurrent) }]}>
+              <button class="nav-top nav-group__btn" type="button" aria-expanded="false" aria-controls={`nav-${it.id}`}>
+                <span>{it.label}</span><svg class="nav-group__chev" viewBox="0 0 24 24" aria-hidden="true" width="16" height="16"><path d="m6 9 6 6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </button>
+              <ul class="nav-sub" id={`nav-${it.id}`}>
+                {it.keys.map((k) => (
+                  <li><a href={url(lang, k)} aria-current={isCurrent(k) ? 'page' : undefined}>{label(k)}</a></li>
+                ))}
+              </ul>
+            </li>
+          ))}
+        </ul>
+      </nav>
+      <div class="site-menu__actions">
+        <a class="btn btn--primary btn--sm" href={url(lang, 'contact')} aria-current={page === 'contact' ? 'page' : undefined}>{d.ui.cta}</a>
+      </div>
+    </div>
+  </div>
+</header>
+
+<script>
+  // Menu mobile: apre/chiude il pannello e aggiorna aria-expanded. Esc per chiudere.
+  const btn = document.querySelector<HTMLButtonElement>('.menu-btn');
+  const label = btn?.querySelector('.menu-btn__label');
+  const desktop = window.matchMedia('(min-width: 1280px)');
+  const groups = [...document.querySelectorAll<HTMLButtonElement>('.nav-group__btn')];
+  const setOpen = (open: boolean) => {
+    if (!btn) return;
+    btn.setAttribute('aria-expanded', String(open));
+    document.documentElement.classList.toggle('menu-open', open);
+    if (label) label.textContent = (open ? btn.dataset.closeLabel : btn.dataset.openLabel) ?? '';
+  };
+  // Su desktop i gruppi partono chiusi; su mobile sono sempre espansi (stato coerente con aria-expanded).
+  const syncGroups = () => groups.forEach((g) => g.setAttribute('aria-expanded', String(!desktop.matches)));
+  const closeGroups = (except?: HTMLButtonElement) => {
+    if (!desktop.matches) return;
+    groups.forEach((g) => g !== except && g.setAttribute('aria-expanded', 'false'));
+  };
+  syncGroups();
+  document.documentElement.classList.add('nav-js');
+  btn?.addEventListener('click', () => setOpen(btn.getAttribute('aria-expanded') !== 'true'));
+  groups.forEach((g) => {
+    g.addEventListener('click', () => {
+      if (!desktop.matches) return;
+      const open = g.getAttribute('aria-expanded') !== 'true';
+      closeGroups(g);
+      g.setAttribute('aria-expanded', String(open));
+    });
+  });
+  document.addEventListener('click', (e) => {
+    if (!(e.target as Element).closest('.nav-group')) closeGroups();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    const openG = groups.find((g) => desktop.matches && g.getAttribute('aria-expanded') === 'true');
+    if (openG) { closeGroups(); openG.focus(); return; }
+    if (btn?.getAttribute('aria-expanded') === 'true') { setOpen(false); btn.focus(); }
+  });
+  // Chiude la tendina quando il focus esce dal gruppo (navigazione con Tab).
+  document.querySelectorAll('.nav-group').forEach((li) => li.addEventListener('focusout', (e) => {
+    const next = (e as FocusEvent).relatedTarget as Node | null;
+    if (desktop.matches && next && !li.contains(next)) li.querySelector('.nav-group__btn')?.setAttribute('aria-expanded', 'false');
+  }));
+  desktop.addEventListener('change', () => { setOpen(false); syncGroups(); });
+</script>
+
+<style>
+  .site-header {
+    position: sticky; inset-block-start: 0; z-index: 50;
+    background: rgb(255 255 255 / 0.92); backdrop-filter: saturate(160%) blur(10px);
+    border-block-end: 1px solid var(--c-line);
+  }
+  .site-header__inner { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-4); min-block-size: var(--header-h); }
+  .site-header__logo { text-decoration: none; display: inline-flex; flex: none; }
+  .menu-btn {
+    display: inline-grid; place-items: center; inline-size: 44px; block-size: 44px;
+    border: 1px solid var(--c-line-strong); border-radius: var(--r-md); background: #fff; cursor: pointer;
+  }
+  .menu-btn__close { display: none; }
+  :global(.menu-open) .menu-btn__open { display: none; }
+  :global(.menu-open) .menu-btn__close { display: block; }
+  .site-menu {
+    display: none; position: absolute; inset-inline: 0; inset-block-start: var(--header-h);
+    background: #fff; border-block-end: 1px solid var(--c-line); box-shadow: var(--sh-lg);
+    padding: var(--sp-4) var(--sp-5) var(--sp-5); max-block-size: calc(100dvh - var(--header-h)); overflow: auto;
+  }
+  :global(.menu-open) .site-menu { display: block; }
+  .nav-list { list-style: none; display: grid; }
+  .nav-list a, .nav-top {
+    display: block; padding: var(--sp-3) var(--sp-2); color: var(--c-ink); text-decoration: none; font-weight: 500;
+    border-block-end: 1px solid var(--c-line);
+  }
+  .nav-group__btn {
+    inline-size: 100%; text-align: start; background: none; border-inline: 0; border-block-start: 0; font: inherit;
+    font-size: var(--fs-xs); font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--c-muted);
+    display: flex; align-items: center; justify-content: space-between; cursor: default; padding-block-start: var(--sp-4);
+  }
+  :lang(he) .nav-group__btn { letter-spacing: 0; font-size: var(--fs-sm); }
+  .nav-group__chev { display: none; }
+  .nav-sub { list-style: none; display: grid; grid-template-columns: 1fr 1fr; column-gap: var(--sp-4); }
+  .nav-sub a { font-size: var(--fs-sm); }
+  .nav-list a[aria-current='page'] { color: var(--c-primary); font-weight: 700; }
+  .site-menu__actions { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--sp-3); margin-block-start: var(--sp-4); }
+
+  @media (min-width: 1280px) {
+    .menu-btn { display: none; }
+    .site-menu {
+      display: flex !important; position: static; align-items: center; gap: var(--sp-4);
+      padding: 0; box-shadow: none; border: 0; background: transparent; overflow: visible; max-block-size: none;
+    }
+    .nav-list { display: flex; gap: 2px; }
+    .nav-list > li { position: relative; }
+    .nav-top, .nav-list .nav-top {
+      border: 0; padding: var(--sp-2) var(--sp-3); border-radius: var(--r-sm); font-size: var(--fs-sm); color: var(--c-ink-2);
+      text-transform: none; letter-spacing: 0; font-weight: 500; white-space: nowrap;
+    }
+    .nav-group__btn { inline-size: auto; display: inline-flex; gap: 4px; cursor: pointer; }
+    .nav-group__chev { display: block; flex: none; transition: transform .2s; }
+    .site-menu__actions .btn { white-space: nowrap; }
+    .nav-group__btn[aria-expanded='true'] .nav-group__chev { transform: rotate(180deg); }
+    .nav-top:hover { color: var(--c-ink); background: var(--c-surface); }
+    .nav-list a.nav-top[aria-current='page'], .nav-group--active > .nav-group__btn { color: var(--c-primary); background: var(--c-primary-50); }
+    .nav-sub {
+      display: none; position: absolute; inset-block-start: calc(100% + 6px); inset-inline-start: 0; min-inline-size: 240px;
+      grid-template-columns: 1fr; background: #fff; border: 1px solid var(--c-line); border-radius: var(--r-md);
+      box-shadow: var(--sh-lg); padding: var(--sp-2); z-index: 60;
+    }
+    .nav-sub a { border: 0; border-radius: var(--r-sm); padding: var(--sp-2) var(--sp-3); white-space: nowrap; }
+    .nav-sub a:hover { background: var(--c-surface); }
+    .nav-group__btn[aria-expanded='true'] + .nav-sub { display: grid; }
+    /* Senza JS: apertura con hover/focus */
+    :global(html:not(.nav-js)) .nav-group:hover .nav-sub, :global(html:not(.nav-js)) .nav-group:focus-within .nav-sub { display: grid; }
+    .site-menu__actions { margin: 0; flex-wrap: nowrap; }
+  }
+</style>

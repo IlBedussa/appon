@@ -1,0 +1,76 @@
+---
+// Layout comune: <head> SEO (title, description, canonical, hreflang, Open Graph),
+// header, footer, lingua e direzione del documento.
+import '@fontsource/heebo/400.css';
+import '@fontsource/heebo/500.css';
+import '@fontsource/heebo/700.css';
+import '../styles/global.css';
+import Header from '../components/Header.astro';
+import Footer from '../components/Footer.astro';
+import RentChat from '../components/tools/RentChat.astro';
+import LeadPopup from '../components/LeadPopup.astro';
+import { locales, langMeta, url, t, defaultLocale, type Locale, type PageKey } from '../i18n/config';
+
+// `alternates` (opzionale): URL per lingua delle traduzioni esistenti (articoli del blog).
+// Se presente, canonical/hreflang usano questi URL invece di quelli della pagina `page`.
+interface Props {
+  lang: Locale; page: PageKey; title: string; description: string; noindex?: boolean;
+  alternates?: Partial<Record<Locale, string>>; ogType?: string;
+}
+const { lang, page, title, description, noindex = false, alternates, ogType = 'website' } = Astro.props;
+const d = t(lang);
+const site = Astro.site ?? new URL('https://www.easybayit.example');
+const canonical = new URL(alternates?.[lang] ?? url(lang, page), site).href;
+const alt: [string, string][] = alternates
+  ? (locales.filter((l) => alternates[l]).map((l) => [l, alternates[l]!]) as [string, string][])
+  : locales.map((l) => [l, url(l, page)]);
+const xDefault = alternates ? (alternates[defaultLocale] ?? alternates[lang]!) : url(defaultLocale, page);
+---
+<!doctype html>
+<html lang={lang} dir={langMeta[lang].dir}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    {noindex && <meta name="robots" content="noindex" />}
+    <link rel="canonical" href={canonical} />
+    {!noindex && alt.map(([l, h]) => <link rel="alternate" hreflang={l} href={new URL(h, site).href} />)}
+    {!noindex && <link rel="alternate" hreflang="x-default" href={new URL(xDefault, site).href} />}
+    <meta property="og:type" content={ogType} />
+    <meta property="og:site_name" content="Easybayit" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:locale" content={langMeta[lang].og} />
+    {alt.filter(([l]) => l !== lang).map(([l]) => <meta property="og:locale:alternate" content={langMeta[l as Locale].og} />)}
+    <slot name="head" />
+    {/* [DA CONFERMARE] Aggiungere og:image (1200x630 PNG) quando sarà pronta la grafica social. */}
+    <meta name="theme-color" content="#1a4fd6" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    {/* Rivelazioni allo scroll: attivate solo con JS e senza "riduci movimento" (altrimenti tutto resta visibile). */}
+    <script is:inline>if('IntersectionObserver' in window&&!matchMedia('(prefers-reduced-motion: reduce)').matches)document.documentElement.classList.add('reveal-on')</script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">{d.ui.skip}</a>
+    <Header lang={lang} page={page} alternates={alternates} />
+    <main id="main" tabindex="-1">
+      <slot />
+    </main>
+    <Footer lang={lang} page={page} alternates={alternates} />
+    {page !== 'demo' && page !== 'rent' && !noindex && <RentChat lang={lang} />}
+    {/* Popup lead: non sulle pagine dove l'utente sta già compilando o legge testi legali. */}
+    {!noindex && !['contact', 'call', 'portal', 'demo', 'rent', 'privacy', 'terms', 'accessibility'].includes(page) && <LeadPopup lang={lang} />}
+    <script>
+      // Osserva gli elementi [data-reveal] e li mostra quando entrano nel viewport (una sola volta).
+      if (document.documentElement.classList.contains('reveal-on')) {
+        const io = new IntersectionObserver((entries) => entries.forEach((e) => {
+          if (e.isIntersecting) { e.target.classList.add('is-in'); io.unobserve(e.target); }
+        }), { rootMargin: '0px 0px -8% 0px', threshold: 0.08 });
+        document.querySelectorAll('[data-reveal]').forEach((el) => io.observe(el));
+        // In stampa mostra comunque tutto.
+        addEventListener('beforeprint', () => document.querySelectorAll('[data-reveal]').forEach((el) => el.classList.add('is-in')));
+      }
+    </script>
+  </body>
+</html>

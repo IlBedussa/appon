@@ -1,0 +1,30 @@
+---
+// Guscio HTML comune: lingua/direzione, font locali, CSS. Nessuno script di terze parti.
+import '@fontsource/heebo/hebrew-400.css';
+import '@fontsource/heebo/hebrew-500.css';
+import '@fontsource/heebo/hebrew-700.css';
+import '@fontsource/heebo/latin-400.css';
+import '@fontsource/heebo/latin-500.css';
+import '@fontsource/heebo/latin-700.css';
+import '../styles/global.css';
+import '../styles/dashboard.css';
+import '../styles/portal.css';
+interface Props { title: string; bodyClass?: string }
+const { title, bodyClass } = Astro.props;
+const { lang, dir, t } = Astro.locals;
+---
+<!doctype html>
+<html lang={lang} dir={dir}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <title>{title} · {t.meta.title}</title>
+  </head>
+  <body class={bodyClass}>
+    <a class="skip-link" href="#main">{t.common.skip}</a>
+    <slot />
+  </body>
+</html>

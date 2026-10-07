@@ -1,0 +1,32 @@
+---
+// Elenco delle fonti citate (da src/data/market.ts), con editore, data e link.
+import { sources, type SourceId } from '../data/market';
+import { tx, type Locale } from '../i18n/config';
+interface Props { lang: Locale; ids: string[]; title?: string; compact?: boolean }
+const { lang, ids, title, compact = false } = Astro.props;
+const c = tx(lang).common;
+const list = [...new Set(ids)].map((id) => sources[id as SourceId]).filter(Boolean);
+---
+{list.length > 0 && (
+  <aside class:list={['sources', { 'sources--compact': compact }]} aria-label={title ?? c.sources}>
+    <p class="sources__title">{title ?? c.sources}</p>
+    <ol>
+      {list.map((s) => (
+        <li>
+          {(s as { official?: boolean }).official && <span class="sources__off">{c.official}</span>}
+          <a href={s.url} rel="noopener" target="_blank" lang="en">{s.label}</a>{s.date !== 'live' && <span class="sources__date"> · {s.date}</span>}
+          {(s as { checked?: string }).checked && <span class="sources__date"> · {c.checkedOn.replace('{date}', (s as { checked?: string }).checked!)}</span>}
+        </li>
+      ))}
+    </ol>
+  </aside>
+)}
+<style>
+  .sources { margin-block-start: var(--sp-5); font-size: var(--fs-xs); color: var(--c-muted); }
+  .sources__title { font-weight: 700; text-transform: uppercase; letter-spacing: .06em; margin: 0 0 var(--sp-2); font-size: var(--fs-xs); }
+  :lang(he) .sources__title { letter-spacing: 0; }
+  .sources ol { margin: 0; padding-inline-start: 1.2em; display: grid; gap: 2px; }
+  .sources a { color: var(--c-ink-2); display: inline-block; padding-block: 3px; } /* area di tocco >= 24px */
+  .sources__off { display: inline-block; font-size: 10px; font-weight: 700; color: var(--c-secondary); background: var(--c-secondary-50); border-radius: 4px; padding: 0 5px; margin-inline-end: 4px; text-transform: uppercase; letter-spacing: .04em; }
+  .sources--compact { margin-block-start: var(--sp-3); }
+</style>

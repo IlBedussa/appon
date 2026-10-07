@@ -1,0 +1,39 @@
+---
+// Campo di form accessibile: label collegata, hint, errore con aria-invalid/aria-describedby.
+interface Option { value: string; label: string }
+interface Props {
+  name: string; label: string; type?: string; value?: string | number | null; error?: string; hint?: string;
+  required?: boolean; options?: Option[]; textarea?: boolean; autocomplete?: string; min?: string | number; max?: string | number;
+  step?: string; maxlength?: number; accept?: string; multiple?: boolean; inputmode?: string; pattern?: string; placeholder?: string; id?: string;
+  checked?: boolean; class?: string;
+}
+const p = Astro.props;
+const id = p.id ?? `f-${p.name}`;
+const desc = [p.hint ? `${id}-hint` : '', p.error ? `${id}-err` : ''].filter(Boolean).join(' ') || undefined;
+const t = Astro.locals.t;
+---
+{p.type === 'checkbox' ? (
+  <div class:list={['field', p.class]}>
+    <label class="check"><input type="checkbox" id={id} name={p.name} checked={p.checked} aria-describedby={desc} /> <span>{p.label}</span></label>
+    {p.hint && <small class="hint" id={`${id}-hint`}>{p.hint}</small>}
+  </div>
+) : (
+  <div class:list={['field', p.class]}>
+    <label for={id}>{p.label}{p.required ? <span class="req-mark" aria-hidden="true">*</span> : <span class="opt"> ({t.common.optional})</span>}</label>
+    {p.options ? (
+      <select class="select" id={id} name={p.name} required={p.required} aria-invalid={p.error ? 'true' : undefined} aria-describedby={desc}>
+        {p.options.map((o) => <option value={o.value} selected={String(p.value ?? '') === o.value}>{o.label}</option>)}
+      </select>
+    ) : p.textarea ? (
+      <textarea class="textarea" id={id} name={p.name} required={p.required} maxlength={p.maxlength} placeholder={p.placeholder}
+        aria-invalid={p.error ? 'true' : undefined} aria-describedby={desc}>{p.value ?? ''}</textarea>
+    ) : (
+      <input class="input" id={id} name={p.name} type={(p.type ?? 'text') as astroHTML.JSX.HTMLInputTypeAttribute} value={p.type === 'file' || p.type === 'password' ? undefined : (p.value ?? undefined)}
+        required={p.required} autocomplete={p.autocomplete} min={p.min} max={p.max} step={p.step} maxlength={p.maxlength} accept={p.accept}
+        multiple={p.multiple} inputmode={p.inputmode as any} pattern={p.pattern} placeholder={p.placeholder}
+        aria-invalid={p.error ? 'true' : undefined} aria-describedby={desc} />
+    )}
+    {p.hint && <small class="hint" id={`${id}-hint`}>{p.hint}</small>}
+    {p.error && <p class="field-error" id={`${id}-err`}>{p.error}</p>}
+  </div>
+)}

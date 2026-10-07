@@ -1,0 +1,55 @@
+---
+// Richieste di manutenzione sugli immobili del proprietario.
+import AppLayout from '../../../layouts/AppLayout.astro';
+import Pill from '../../../components/Pill.astro';
+import SourceBadge from '../../../components/SourceBadge.astro';
+import Field from '../../../components/Field.astro';
+import Csrf from '../../../components/Csrf.astro';
+import Icon from '../../../components/Icon.astro';
+import { z, formToObject, money, checkbox } from '../../../lib/validation';
+import { setFlash } from '../../../lib/flash';
+import { fill } from '../../../i18n';
+import { date, ils } from '../../../lib/format';
+
+const { t, supabase, intl, user } = Astro.locals;
+// Soglia di approvazione impostata dal proprietario (scrittura solo via funzione DB tracciata)
+if (Astro.request.method === 'POST') {
+  const p = z.object({ limit: money.refine((n) => n >= 0 && n <= 1_000_000), auto: checkbox }).safeParse(formToObject(await Astro.request.formData()));
+  const { error } = p.success ? await supabase.rpc('set_approval_settings', { p_limit: p.data.limit, p_auto: p.data.auto }) : { error: true };
+  setFlash(Astro.cookies, error ? 'error' : 'success', error ? t.common.invalid : t.pri.saved);
+  return Astro.redirect('/owner/maintenance', 303);
+}
+const { data: me } = await supabase.from('owners').select('approval_limit_ils, auto_approve_below_limit').eq('profile_id', user!.id).maybeSingle();
+const { data } = await supabase.from('maintenance_requests')
+  .select('id, ref, title, source, priority, status, created_at, property:properties(code, name)')
+  .order('created_at', { ascending: false });
+const rows = data ?? [];
+const tone = (s: string) => (s === 'quote_pending' ? 'warn' : s === 'closed' ? 'ok' : s === 'cancelled' ? 'neutral' : 'info');
+---
+<AppLayout title={t.maint.title} active="maintenance">
+  {me && (
+    <section class="dcard" aria-labelledby="h-thr" data-testid="approval-settings">
+      <div class="dcard-head"><span><strong id="h-thr">{t.pri.approvalTitle}</strong><small>{t.pri.approvalText}</small></span>
+        <Pill tone={me.auto_approve_below_limit ? 'ok' : 'neutral'}>{me.auto_approve_below_limit ? fill(t.pri.autoOn, { a: ils(me.approval_limit_ils, intl) }) : t.pri.autoOff}</Pill></div>
+      <form method="post" class="form-grid">
+        <Csrf />
+        <Field name="limit" type="number" step="1" min="0" max="1000000" label={t.pri.limitLabel} value={me.approval_limit_ils} required />
+        <Field name="auto" type="checkbox" label={t.pri.autoLabel} checked={me.auto_approve_below_limit} />
+        <div class="form-actions span-2"><button type="submit" class="btn btn--secondary btn--sm"><Icon name="shield" /> {t.common.save}</button></div>
+      </form>
+    </section>
+  )}
+  {rows.length === 0 ? <p class="empty">{t.maint.empty}</p> : (
+    <ul class="req-list">
+      {rows.map((r) => (
+        <li>
+          <a class="req" href={`/owner/maintenance/${r.id}`}>
+            <span class="req-top"><strong>{r.title} <SourceBadge source={(r as any).source} /></strong><Pill tone={r.priority === 'urgent' ? 'urgent' : 'neutral'}>{(t.priority as Record<string, string>)[r.priority]}</Pill></span>
+            <small>R-{r.ref} · {(r.property as any)?.code} · {(r.property as any)?.name} · {date(r.created_at, intl)}</small>
+            <span><Pill tone={tone(r.status)}>{(t.maintStatus as Record<string, string>)[r.status]}</Pill></span>
+          </a>
+        </li>
+      ))}
+    </ul>
+  )}
+</AppLayout>

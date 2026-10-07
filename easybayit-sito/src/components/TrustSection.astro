@@ -1,0 +1,75 @@
+---
+// Sezione "Verificabile": dati societari reali (confermati da David) + link al registro ufficiale.
+// Il link porta alla ricerca pubblica del registro delle società israeliano (Israel Corporations Authority).
+import Icon from './Icon.astro';
+import T from './T.astro';
+import TestAuthorityLogos from './TestAuthorityLogos.astro';
+import { instLogo } from '../lib/instLogos';
+import { t, type Locale } from '../i18n/config';
+interface Props { lang: Locale; surface?: boolean }
+const { lang, surface = false } = Astro.props;
+const tr = t(lang).trust;
+// URL ufficiale della ricerca società (ica.justice.gov.il). L'ortografia "Corporarion" è quella del sito governativo.
+// Logo della Corporations Authority accanto al passo "società registrata": SOLO con SHOW_TEST_LOGOS=1
+// (instLogo restituisce null a flag spento, quindi in produzione non viene generato nulla).
+const ICA = instLogo('ica');
+const REGISTRY_URL = 'https://ica.justice.gov.il/GenericCorporarionInfo/SearchCorporation?unit=8';
+---
+<section class:list={['section', { 'section--surface': surface }]} id="verify" aria-labelledby="trust-title">
+  <div class="container">
+    <div class="section-head">
+      <p class="eyebrow"><Icon name="check" /> {tr.eyebrow}</p>
+      <h2 id="trust-title">{tr.title}</h2>
+      <p>{tr.lead}</p>
+    </div>
+    <div class="trust-grid">
+      <div class="card trust-main">
+        <div class="trust-head">
+          <span class="icon-badge icon-badge--teal"><Icon name="shield" /></span>
+          <p class="trust-label">{tr.registered}</p>
+          {ICA && (
+            <span class="trust-ica" data-test-only="authority-logos" title={tr.testMarker}>
+              <img src={ICA.src} alt={ICA.alt} width="96" height="28" />
+              <span lang="en" dir="ltr">TEST</span>
+            </span>
+          )}
+        </div>
+        <p class="trust-name">{tr.companyName}</p>
+        <p class="trust-alt" lang={lang === 'he' ? 'en' : 'he'} dir={lang === 'he' ? 'ltr' : 'rtl'}>{tr.companyNameAlt}</p>
+        <p class="trust-no">{tr.companyNoLabel} <strong dir="ltr">{tr.companyNo}</strong></p>
+        <a class="trust-link" href={REGISTRY_URL} target="_blank" rel="noopener noreferrer">
+          {tr.verifyLink} <Icon name="arrow" />
+        </a>
+        <p class="trust-how">{tr.verifyHow}</p>
+      </div>
+      <div class="card card--flat">
+        <h3>{tr.otherTitle}</h3>
+        <ul class="trust-other">
+          {tr.other.map((o) => <li><Icon name="clock" /><span><T text={o} /></span></li>)}
+        </ul>
+      </div>
+    </div>
+    <TestAuthorityLogos lang={lang} />
+  </div>
+</section>
+<style>
+  .trust-grid { display: grid; gap: var(--sp-5); }
+  @media (min-width: 900px) { .trust-grid { grid-template-columns: 1.3fr 1fr; } }
+  .trust-main { border-color: #99e2d6; box-shadow: 0 0 0 1px #99e2d6, var(--sh-md); }
+  .trust-head { display: flex; align-items: center; gap: var(--sp-3); }
+  .trust-head .icon-badge { margin: 0; }
+  .trust-head { flex-wrap: wrap; }
+  .trust-ica { margin-inline-start: auto; display: inline-flex; align-items: center; gap: 6px; padding: 3px 6px; border: 1.5px dashed #dc2626; border-radius: var(--r-sm, 6px); background: #fff; }
+  .trust-ica img { block-size: 28px; inline-size: auto; max-inline-size: 120px; object-fit: contain; }
+  .trust-ica span { font-size: 10px; font-weight: 700; color: #fff; background: #dc2626; border-radius: var(--r-pill); padding: 1px 6px; }
+  .trust-label { margin: 0; font-weight: 600; color: var(--c-secondary); }
+  .trust-name { font-size: var(--fs-xl); font-weight: 700; margin: var(--sp-4) 0 0; line-height: 1.25; }
+  .trust-alt { color: var(--c-muted); margin: 2px 0 var(--sp-3); text-align: start; }
+  .trust-no { font-size: var(--fs-lg); margin-block-end: var(--sp-4); }
+  .trust-no strong { font-variant-numeric: tabular-nums; letter-spacing: .04em; }
+  .trust-link { display: inline-flex; align-items: center; gap: var(--sp-2); font-weight: 600; }
+  .trust-how { font-size: var(--fs-sm); color: var(--c-muted); margin: var(--sp-2) 0 0; }
+  .trust-other { list-style: none; display: grid; gap: var(--sp-3); }
+  .trust-other li { display: flex; gap: var(--sp-2); align-items: flex-start; color: var(--c-ink-2); font-size: var(--fs-sm); }
+  .trust-other .icon { color: var(--c-muted); margin-block-start: .15em; }
+</style>

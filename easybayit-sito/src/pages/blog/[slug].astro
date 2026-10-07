@@ -1,0 +1,10 @@
+---
+// Articoli del blog in inglese: /blog/<slug>/ (le bozze solo con SHOW_DRAFTS=1).
+import Article from '../../components/blog/Article.astro';
+import { getPosts, type Post } from '../../lib/blog';
+export async function getStaticPaths() {
+  return (await getPosts('en')).map((post) => ({ params: { slug: post.data.slug }, props: { post } }));
+}
+const { post } = Astro.props as { post: Post };
+---
+<Article post={post} />

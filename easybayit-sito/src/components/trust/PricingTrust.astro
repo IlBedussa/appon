@@ -1,0 +1,33 @@
+---
+// Box "quello che paghi è tutto" (pagina prezzi): link a Transparency Pledge e al calcolatore di cambio gestore.
+import TIcon from './TIcon.astro';
+import T from '../T.astro';
+import { url, tt, type Locale } from '../../i18n/config';
+interface Props { lang: Locale }
+const { lang } = Astro.props;
+const s = tt(lang).strip;
+---
+<section class="section section--tight">
+  <div class="container">
+    <div class="ptrust" data-reveal>
+      <span class="ptrust__ic" aria-hidden="true"><TIcon name="shield" /></span>
+      <div class="ptrust__txt">
+        <h2>{s.pricingTitle}</h2>
+        <p><T text={s.pricingText} /></p>
+      </div>
+      <div class="btn-row">
+        <a class="btn btn--primary" href={url(lang, 'pledge')}>{s.pricingPledge} <TIcon name="arrow" /></a>
+        <a class="btn btn--secondary" href={url(lang, 'switching')}><TIcon name="calc" /> {s.pricingSwitch}</a>
+      </div>
+    </div>
+  </div>
+</section>
+<style>
+  .ptrust { display: grid; gap: var(--sp-4) var(--sp-5); align-items: center; padding: var(--sp-6); border-radius: var(--r-xl); border: 1px solid var(--c-primary-100);
+    background: linear-gradient(135deg, var(--c-primary-50), #fff 60%); }
+  @media (min-width: 980px) { .ptrust { grid-template-columns: auto 1fr auto; } }
+  .ptrust__ic { display: grid; place-items: center; inline-size: 56px; block-size: 56px; border-radius: 16px; background: var(--c-primary); color: #fff; box-shadow: 0 10px 20px -10px var(--c-primary); }
+  .ptrust__ic :global(.icon) { inline-size: 28px; block-size: 28px; }
+  .ptrust h2 { font-size: var(--fs-xl); margin-block-end: var(--sp-2); }
+  .ptrust p { margin: 0; color: var(--c-ink-2); max-inline-size: 64ch; }
+</style>

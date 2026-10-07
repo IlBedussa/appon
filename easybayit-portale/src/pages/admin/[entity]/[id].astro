@@ -1,0 +1,61 @@
+---
+// Modifica / eliminazione di un'anagrafica.
+import AppLayout from '../../../layouts/AppLayout.astro';
+import Field from '../../../components/Field.astro';
+import Csrf from '../../../components/Csrf.astro';
+import Icon from '../../../components/Icon.astro';
+import { entities, loadOptions, nullify } from '../../../lib/admin-entities';
+import { z, formToObject, fieldErrors } from '../../../lib/validation';
+import { setFlash } from '../../../lib/flash';
+
+const { t, supabase } = Astro.locals;
+const entity = Astro.params.entity ?? '';
+const ent = entities[entity];
+const id = z.uuid().safeParse(Astro.params.id);
+if (!ent || !id.success) return Astro.rewrite('/404');
+const f = t.admin.fields;
+let errors: Record<string, string> = {};
+let posted: Record<string, any> | null = null;
+
+if (Astro.request.method === 'POST') {
+  const fd = await Astro.request.formData();
+  if (fd.get('action') === 'delete') {
+    const { error } = await supabase.from(ent.table).delete().eq('id', id.data);
+    if (error) setFlash(Astro.cookies, 'error', error.code === '23503' ? t.admin.inUse : t.common.error);
+    else { setFlash(Astro.cookies, 'success', t.admin.deleted); return Astro.redirect(`/admin/${entity}`, 303); }
+    return Astro.redirect(`/admin/${entity}/${id.data}`, 303);
+  }
+  posted = formToObject(fd);
+  const p = ent.schema.safeParse(posted);
+  if (!p.success) errors = fieldErrors(p.error);
+  else {
+    const { error } = await supabase.from(ent.table).update(nullify(p.data)).eq('id', id.data);
+    if (error) errors._ = error.code === '23505' ? `${t.common.invalid} (duplicate)` : t.common.error;
+    else { setFlash(Astro.cookies, 'success', t.admin.updated); return Astro.redirect(`/admin/${entity}/${id.data}`, 303); }
+  }
+}
+const [{ data: row }, options] = await Promise.all([supabase.from(ent.table).select(ent.select).eq('id', id.data).maybeSingle(), loadOptions(supabase, t)]);
+if (!row) return Astro.rewrite('/404');
+const values: Record<string, any> = posted ?? row;
+---
+<AppLayout title={`${ent.title(t)} · ${ent.label(row)}`} active={ent.navKey}>
+  <p><a href={`/admin/${entity}`} class="link-sm">← {t.common.back}</a></p>
+  <div class="dcard">
+    {Object.keys(errors).length > 0 && <p class="form-status" data-type="error" role="alert">{errors._ ?? t.common.invalid}</p>}
+    <form method="post" class="form-grid">
+      <Csrf />
+      {ent.fields.map((fd) => (
+        <Field name={fd.name} label={f[fd.name] ?? fd.name} type={fd.type === 'select' || fd.type === 'textarea' ? undefined : fd.type}
+          textarea={fd.type === 'textarea'} options={fd.options ? options[fd.options] : undefined} required={fd.required} maxlength={fd.max}
+          step={fd.step} value={fd.type === 'checkbox' ? undefined : values[fd.name]} checked={fd.type === 'checkbox' ? !!values[fd.name] : undefined} error={errors[fd.name]} class={fd.span ? 'span-2' : undefined} />
+      ))}
+      <div class="form-actions span-2"><button type="submit" class="btn btn--primary btn--sm">{t.common.save}</button></div>
+    </form>
+  </div>
+  <details class="confirm-box">
+    <summary class="btn btn--secondary btn--sm"><Icon name="x" /> {t.common.delete}</summary>
+    <form method="post"><Csrf /><input type="hidden" name="action" value="delete" />
+      <p><strong>{t.admin.deleteConfirm}</strong></p>
+      <button type="submit" class="btn btn--danger btn--sm">{t.common.confirm}</button></form>
+  </details>
+</AppLayout>

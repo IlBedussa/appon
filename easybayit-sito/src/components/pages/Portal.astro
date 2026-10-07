@@ -1,0 +1,131 @@
+---
+import Icon from '../Icon.astro';
+import T from '../T.astro';
+import PageHero from '../PageHero.astro';
+import PortalMockup from '../PortalMockup.astro';
+import MaintenanceTimeline from '../MaintenanceTimeline.astro';
+import CtaBand from '../CtaBand.astro';
+import { url, t, type Locale } from '../../i18n/config';
+interface Props { lang: Locale }
+const { lang } = Astro.props;
+const d = t(lang);
+const p = d.pages.portal;
+---
+<PageHero eyebrow={p.eyebrow} title={p.h1} lead={p.lead}>
+  <p slot="actions"><span class="badge badge--soon soon-big"><Icon name="clock" /> {d.ui.comingSoon}</span></p>
+  <PortalMockup lang={lang} slot="visual" />
+</PageHero>
+
+<!-- Link alla dashboard demo interattiva -->
+<section class="section section--tight">
+  <div class="container">
+    <a class="card card--link demo-card" href={url(lang, 'demo')}>
+      <span class="icon-badge"><Icon name="chart" /></span>
+      <span class="demo-card__txt"><strong>{p.demoTitle}</strong><span>{p.demoText}</span></span>
+      <span class="btn btn--primary">{p.demoCta} <Icon name="arrow" /></span>
+    </a>
+  </div>
+</section>
+
+<section class="section">
+  <div class="container grid grid--2">
+    <article class="card">
+      <span class="icon-badge"><Icon name="key" /></span>
+      <h2 class="h3">{p.ownerTitle}</h2>
+      <ul class="checklist">{p.ownerPoints.map((x) => <li><Icon name="check" /><span>{x}</span></li>)}</ul>
+    </article>
+    <article class="card">
+      <span class="icon-badge icon-badge--teal"><Icon name="user" /></span>
+      <h2 class="h3">{p.tenantTitle}</h2>
+      <ul class="checklist">{p.tenantPoints.map((x) => <li><Icon name="check" /><span>{x}</span></li>)}</ul>
+    </article>
+  </div>
+</section>
+
+<section class="section section--surface" id="login">
+  <div class="container split">
+    <div class="card login">
+      <div class="login__head">
+        <h2 class="h3"><Icon name="lock" /> {p.loginTitle}</h2>
+        <span class="badge badge--soon">{d.ui.comingSoon}</span>
+      </div>
+      <p class="notice" role="note"><Icon name="info" /> <span>{p.loginNote}</span></p>
+      <!--
+        SEGNAPOSTO LOGIN PORTALE — NON FUNZIONANTE.
+        Il form è volutamente disabilitato (campi e pulsante "disabled", nessun action).
+        Vedi lo script qui sotto per il punto di integrazione.
+      -->
+      <form class="login__form" id="portal-login" aria-describedby="login-note" novalidate>
+        <fieldset disabled>
+          <legend class="visually-hidden">{p.loginTitle}</legend>
+          <div class="field">
+            <label for="login-email">{p.email}</label>
+            <input class="input" id="login-email" name="email" type="email" autocomplete="username" />
+          </div>
+          <div class="field">
+            <label for="login-password">{p.password}</label>
+            <input class="input" id="login-password" name="password" type="password" autocomplete="current-password" />
+          </div>
+          <button class="btn btn--primary" type="submit" disabled aria-disabled="true">{p.submit}</button>
+        </fieldset>
+        <p id="login-note" class="visually-hidden">{p.loginNote}</p>
+      </form>
+    </div>
+    <div class="stack">
+      <div class="card card--flat">
+        <h2 class="h3"><Icon name="clock" /> {p.untilTitle}</h2>
+        <p><T text={p.untilText} /></p>
+      </div>
+      <div class="card card--flat">
+        <h2 class="h3"><Icon name="shield" /> {p.securityTitle}</h2>
+        <ul class="checklist">{p.securityPoints.map((x) => <li><Icon name="check" /><span><T text={x} /></span></li>)}</ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="container"><MaintenanceTimeline lang={lang} /></div>
+</section>
+
+<CtaBand lang={lang} />
+
+<script>
+  /*
+   * HOOK DI INTEGRAZIONE — LOGIN PORTALE (vuoto di proposito)
+   * --------------------------------------------------------
+   * Quando il portale sarà pronto:
+   * 1. Rimuovere l'attributo "disabled" da <fieldset> e dal pulsante nel markup.
+   * 2. Implementare `accediAlPortale` qui sotto, ad esempio:
+   *    - redirect al provider di autenticazione (OIDC/OAuth, es. il backend del portale), OPPURE
+   *    - POST verso un endpoint HTTPS del portale che restituisce una sessione (cookie HttpOnly, Secure, SameSite).
+   * 3. MAI salvare password o token in localStorage; MAI inserire chiavi/segreti in questo file
+   *    (il sito è statico e tutto il codice è pubblico).
+   * 4. Valutare l'autenticazione a due fattori [DA CONFERMARE].
+   */
+  async function accediAlPortale(_email: string, _password: string): Promise<void> {
+    // [DA CONFERMARE] Integrazione con il backend del portale. Nessuna implementazione per ora.
+  }
+
+  const form = document.getElementById('portal-login') as HTMLFormElement | null;
+  form?.addEventListener('submit', (e) => {
+    e.preventDefault(); // Il login è disabilitato: nessun invio.
+    void accediAlPortale;
+  });
+</script>
+
+<style>
+  .demo-card { display: grid; gap: var(--sp-4); align-items: center; background: linear-gradient(135deg, var(--c-primary-50), #fff); border-color: var(--c-primary-100); }
+  @media (min-width: 900px) { .demo-card { grid-template-columns: auto 1fr auto; } }
+  .demo-card .icon-badge { margin: 0; }
+  .demo-card__txt { display: grid; gap: 4px; }
+  .demo-card__txt strong { font-size: var(--fs-lg); }
+  .demo-card__txt span { color: var(--c-ink-2); }
+  .soon-big { font-size: var(--fs-sm); padding: 6px 12px; margin-block-start: var(--sp-5); }
+  .h3 { font-size: var(--fs-lg); display: flex; align-items: center; gap: var(--sp-2); }
+  .h3 :global(.icon) { color: var(--c-primary); }
+  .login__head { display: flex; justify-content: space-between; align-items: center; gap: var(--sp-3); }
+  .login__head h2 { margin: 0; }
+  .login .notice { margin-block: var(--sp-4); }
+  .login fieldset { border: 0; padding: 0; margin: 0; display: grid; gap: var(--sp-4); opacity: .75; }
+</style>

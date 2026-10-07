@@ -1,0 +1,75 @@
+---
+import Icon from '../Icon.astro';
+import T from '../T.astro';
+import PageHero from '../PageHero.astro';
+import CtaBand from '../CtaBand.astro';
+import TrustSection from '../TrustSection.astro';
+import { t, type Locale } from '../../i18n/config';
+interface Props { lang: Locale }
+const { lang } = Astro.props;
+const d = t(lang);
+const p = d.pages.about;
+const pillars = d.pages.home.pillars;
+const icons: Record<string, string> = { security: 'shield', loyalty: 'link', transparency: 'eye', digital: 'device' };
+---
+<PageHero eyebrow={p.eyebrow} title={p.h1} lead={p.lead} />
+
+<section class="section">
+  <div class="container prose-wide">
+    <h2>{p.storyTitle}</h2>
+    {p.story.map((s) => <p class="lead"><T text={s} /></p>)}
+  </div>
+</section>
+
+<section class="section section--surface">
+  <div class="container">
+    <div class="section-head"><h2>{p.valuesTitle}</h2></div>
+    <div class="grid grid--4">
+      {pillars.map((v) => (
+        <div class="card">
+          <span class="icon-badge"><Icon name={icons[v.key]} /></span>
+          <h3>{v.title}</h3>
+          <p>{v.lead}</p>
+          <p class="proof-one"><Icon name="check" /> <span><T text={v.proofs[0]} /></span></p>
+        </div>
+      ))}
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="container grid grid--2">
+    <div>
+      <h2>{p.teamTitle}</h2>
+      <p class="lead">{p.teamText}</p>
+      <ul class="team">
+        {p.team.map((m) => (
+          <li class="card card--flat member">
+            <span class="avatar" aria-hidden="true"><Icon name="user" /></span>
+            <span><strong><T text={m.name} /></strong><br /><span class="role"><T text={m.role} /></span></span>
+          </li>
+        ))}
+      </ul>
+    </div>
+    <div class="card card--flat">
+      <h2 class="h3">{p.detailsTitle}</h2>
+      <ul class="details">{p.details.map((x) => <li><T text={x} /></li>)}</ul>
+    </div>
+  </div>
+</section>
+
+<TrustSection lang={lang} surface />
+<CtaBand lang={lang} />
+<style>
+  .prose-wide { max-inline-size: 820px; }
+  .lead { font-size: var(--fs-lg); color: var(--c-ink-2); }
+  .proof-one { display: flex; gap: var(--sp-2); font-size: var(--fs-sm); margin: 0; }
+  .proof-one :global(.icon) { color: var(--c-success); margin-block-start: .2em; flex: none; }
+  .team { list-style: none; display: grid; gap: var(--sp-3); }
+  .member { display: flex; gap: var(--sp-4); align-items: center; padding: var(--sp-4); }
+  .avatar { display: grid; place-items: center; inline-size: 52px; block-size: 52px; border-radius: 50%; background: var(--c-surface-2); color: var(--c-muted); flex: none; }
+  .role { color: var(--c-muted); font-size: var(--fs-sm); }
+  .h3 { font-size: var(--fs-lg); }
+  .details { list-style: none; display: grid; gap: var(--sp-3); }
+  .details li { padding-block-end: var(--sp-3); border-block-end: 1px solid var(--c-line); color: var(--c-ink-2); }
+</style>

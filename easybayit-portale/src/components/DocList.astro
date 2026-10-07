@@ -1,0 +1,28 @@
+---
+// Elenco documenti con link di download tracciato (/files/document/:id).
+import Icon from './Icon.astro';
+import Pill from './Pill.astro';
+import { bytes, date } from '../lib/format';
+import { fill } from '../i18n';
+interface Doc { id: string; title: string; category: string; size_bytes: number; mime_type: string; created_at: string; expires_on?: string | null; property?: { code: string; name: string } | null }
+interface Props { docs: Doc[] }
+const { docs } = Astro.props;
+const { t, intl } = Astro.locals;
+const today = new Date().toISOString().slice(0, 10);
+const ico = (c: string) => (c === 'invoice' ? 'wallet' : c === 'insurance' ? 'shield' : c === 'statement' ? 'chart' : c === 'photo' ? 'camera' : 'doc');
+---
+{docs.length === 0 ? <p class="empty">{t.docs.empty}</p> : (
+  <div class="dcard">
+    <p class="muted small">{fill(t.docs.count, { n: docs.length })}</p>
+    <ul class="doc-list">
+      {docs.map((d) => (
+        <li>
+          <span class={`doc-ico doc-ico--${d.category}`}><Icon name={ico(d.category)} /></span>
+          <span class="doc-name"><strong>{d.title}</strong><small>{d.property ? `${d.property.code} · ${d.property.name} · ` : ''}{date(d.created_at, intl)} · {d.mime_type === 'application/pdf' ? 'PDF' : 'IMG'} {bytes(d.size_bytes)}</small></span>
+          {d.expires_on ? <Pill tone={d.expires_on < today ? 'urgent' : 'warn'}>{t.pri.expiresOn}: {date(d.expires_on, intl)}</Pill> : <Pill>{(t.docCat as Record<string, string>)[d.category]}</Pill>}
+          <a class="btn btn--secondary btn--sm" href={`/files/document/${d.id}`}><Icon name="download" /> {t.common.download}<span class="visually-hidden">: {d.title}</span></a>
+        </li>
+      ))}
+    </ul>
+  </div>
+)}

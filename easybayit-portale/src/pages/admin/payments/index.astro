@@ -1,0 +1,114 @@
+---
+// Pagamenti (staff): registrazione manuale e import CSV dei bonifici. Nessun incasso online,
+// nessun dato di carta: solo storico (data, importo, metodo, riferimento).
+import AppLayout from '../../../layouts/AppLayout.astro';
+import Field from '../../../components/Field.astro';
+import Csrf from '../../../components/Csrf.astro';
+import Icon from '../../../components/Icon.astro';
+import PaymentsTable from '../../../components/PaymentsTable.astro';
+import { z, formToObject, isoDate, positiveMoney } from '../../../lib/validation';
+import { csvObjects } from '../../../lib/csv';
+import { setFlash } from '../../../lib/flash';
+import { fill } from '../../../i18n';
+import { randomUUID } from 'node:crypto';
+
+const { t, supabase, user } = Astro.locals;
+const kinds = ['rent', 'deposit', 'payout', 'other'] as const;
+const methods = ['bank_transfer', 'standing_order', 'check', 'cash', 'other'] as const;
+const statuses = ['paid', 'late', 'pending'] as const;
+const row = z.object({
+  paid_on: isoDate, amount_ils: positiveMoney, kind: z.enum(kinds), method: z.enum(methods), status: z.enum(statuses),
+  reference: z.string().trim().max(120).optional().transform((v) => v || null),
+  period: z.string().trim().optional().transform((v) => (v ? v.slice(0, 7) : null)).refine((v) => v === null || /^\d{4}-(0[1-9]|1[0-2])$/.test(v)),
+});
+const { data: props } = await supabase.from('properties').select('id, code, name, leases(id, tenant_id, status)').order('code');
+const byCode = new Map((props ?? []).map((p) => [p.code.toUpperCase(), p]));
+const toInsert = (p: (typeof props & {})[number], r: z.infer<typeof row>, source: 'manual' | 'csv', batch?: string) => {
+  const lease = p.leases?.find((l) => l.status === 'active');
+  const withTenant = r.kind === 'rent' || r.kind === 'deposit';
+  return {
+    property_id: p.id, lease_id: withTenant ? lease?.id ?? null : null, tenant_id: withTenant ? lease?.tenant_id ?? null : null,
+    paid_on: r.paid_on, period: r.period ? `${r.period}-01` : null, amount_ils: r.amount_ils, kind: r.kind, method: r.method, status: r.status,
+    reference: r.reference, source, import_batch: batch ?? null, created_by: user!.id,
+  };
+};
+let errors: string[] = [];
+
+if (Astro.request.method === 'POST') {
+  const fd = await Astro.request.formData();
+  if (fd.get('action') === 'import') {
+    const file = fd.get('csv');
+    const text = file instanceof File && file.size > 0 && file.size < 2 * 1024 * 1024 ? await file.text() : '';
+    const rows = csvObjects(text).slice(0, 2000);
+    const batch = randomUUID();
+    const valid: ReturnType<typeof toInsert>[] = [];
+    rows.forEach((o, i) => {
+      const p = byCode.get((o.property_code ?? '').toUpperCase());
+      const r = row.safeParse(o);
+      if (!p) errors.push(fill(t.admin.pay.row, { n: i + 2, e: `property_code "${(o.property_code ?? '').slice(0, 20)}"` }));
+      else if (!r.success) errors.push(fill(t.admin.pay.row, { n: i + 2, e: r.error.issues.map((x) => x.path.join('.')).join(', ') }));
+      else valid.push(toInsert(p, r.data, 'csv', batch));
+    });
+    if (!rows.length) errors.push(t.common.invalid);
+    if (!errors.length) {
+      // tutto o niente: si importa solo se tutte le righe sono valide
+      const { error } = await supabase.from('payments').insert(valid);
+      if (error) errors.push(t.common.error);
+      else { setFlash(Astro.cookies, 'success', fill(t.admin.pay.imported, { n: valid.length })); return Astro.redirect('/admin/payments', 303); }
+    }
+  } else {
+    const o = formToObject(fd) as Record<string, string>;
+    const p = (props ?? []).find((x) => x.id === o.property_id);
+    const r = row.safeParse(o);
+    if (!p || !r.success) errors.push(t.common.invalid);
+    else {
+      const { error } = await supabase.from('payments').insert(toInsert(p, r.data, 'manual'));
+      if (error) errors.push(t.common.error);
+      else { setFlash(Astro.cookies, 'success', t.common.saved); return Astro.redirect('/admin/payments', 303); }
+    }
+  }
+}
+const { data: pays } = await supabase.from('payments').select('id, paid_on, period, amount_ils, kind, method, status, reference, property:properties(code, name), tenant:tenants(full_name)').order('paid_on', { ascending: false }).limit(300);
+const today = new Date().toISOString().slice(0, 10);
+---
+<AppLayout title={t.pay.title} active="payments">
+  <p class="notice notice--info"><Icon name="info" /> <span>{t.pay.noOnline}</span></p>
+  {errors.length > 0 && (
+    <div class="form-status" data-type="error" role="alert">
+      <p class="mt-0">{errors.length > 1 ? fill(t.admin.pay.importErrors, { n: errors.length }) : errors[0]}</p>
+      {errors.length > 1 && <ul>{errors.slice(0, 20).map((e) => <li>{e}</li>)}</ul>}
+    </div>
+  )}
+  <div class="grid-2">
+    <details class="create">
+      <summary><Icon name="plus" /> {t.admin.pay.record}</summary>
+      <div class="create-body">
+        <form method="post" class="form-grid">
+          <Csrf />
+          <Field name="property_id" label={t.common.property} required options={(props ?? []).map((p) => ({ value: p.id, label: `${p.code} · ${p.name}` }))} />
+          <Field name="paid_on" type="date" label={t.pay.paidOn} required value={today} />
+          <Field name="amount_ils" type="number" step="0.01" min="0.01" label={`${t.common.amount} (ILS)`} required />
+          <Field name="kind" label={t.pay.kind} required options={kinds.map((k) => ({ value: k, label: t.payKind[k] }))} />
+          <Field name="method" label={t.pay.method} required options={methods.map((k) => ({ value: k, label: t.payMethod[k] }))} />
+          <Field name="status" label={t.common.status} required options={statuses.map((k) => ({ value: k, label: t.payStatus[k] }))} />
+          <Field name="period" type="month" label={t.pay.period} value={today.slice(0, 7)} />
+          <Field name="reference" label={t.pay.reference} maxlength={120} />
+          <div class="form-actions span-2"><button class="btn btn--primary btn--sm" type="submit">{t.common.save}</button></div>
+        </form>
+      </div>
+    </details>
+    <details class="create">
+      <summary><Icon name="upload" /> {t.admin.pay.import}</summary>
+      <div class="create-body stack-sm">
+        <p class="small muted">{t.admin.pay.importHint}</p>
+        <p><a class="link-sm" href="/admin/payments/template.csv"><Icon name="download" /> {t.admin.pay.template}</a></p>
+        <form method="post" enctype="multipart/form-data" class="stack-sm">
+          <Csrf /><input type="hidden" name="action" value="import" />
+          <Field name="csv" type="file" label="CSV" accept=".csv,text/csv" required />
+          <button class="btn btn--primary btn--sm" type="submit">{t.admin.pay.import}</button>
+        </form>
+      </div>
+    </details>
+  </div>
+  <PaymentsTable rows={(pays ?? []) as any} />
+</AppLayout>

@@ -1,0 +1,22 @@
+---
+// Timeline dello stato di una richiesta di manutenzione (passi standard + stato corrente).
+import Icon from './Icon.astro';
+interface Props { status: string }
+const { status } = Astro.props;
+const { t } = Astro.locals;
+const steps = ['reported', 'in_review', 'quote_pending', 'approved', 'scheduled', 'closed'] as const;
+const idx = status === 'cancelled' ? -1 : steps.indexOf(status as (typeof steps)[number]);
+const label = t.maintStatus as Record<string, string>;
+---
+<ol class="dtl" aria-label={t.maint.timeline}>
+  {steps.map((s, k) => {
+    const state = status === 'closed' || k < idx ? 'done' : k === idx ? 'now' : 'todo';
+    return (
+      <li class={state} aria-current={state === 'now' ? 'step' : undefined}>
+        <span class="dtl-dot">{state === 'done' ? <Icon name="check" /> : k + 1}</span>
+        <span>{label[s]}</span>
+      </li>
+    );
+  })}
+</ol>
+{status === 'cancelled' && <p class="muted">{label.cancelled}</p>}

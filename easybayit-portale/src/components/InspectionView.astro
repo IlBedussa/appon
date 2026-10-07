@@ -1,0 +1,151 @@
+---
+// Dettaglio di un'ispezione (staff, proprietario, inquilino): intestazione, sintesi, voci stanza per stanza,
+// galleria foto con data di scatto/caricamento e impronta SHA-256, prese visione. Lo slot "actions"
+// ospita i comandi del ruolo (conferma di presa visione o strumenti di compilazione dello staff).
+import Icon from './Icon.astro';
+import Pill from './Pill.astro';
+import { fill } from '../i18n';
+import { ix } from '../i18n/inspections';
+import { date, dateTime, bytes } from '../lib/format';
+import { byRoom, type InspectionFull } from '../lib/inspections';
+interface Props { d: InspectionFull; pdfHref: string }
+const { d, pdfHref } = Astro.props;
+const { t, intl, lang } = Astro.locals;
+const x = ix(lang);
+const tone = (c: string) => (c === 'good' ? 'ok' : c === 'fair' ? 'warn' : c === 'poor' ? 'urgent' : 'neutral') as 'ok' | 'warn' | 'urgent' | 'neutral';
+const rooms = byRoom(d.items);
+const counts = { good: 0, fair: 0, poor: 0, na: 0 } as Record<string, number>;
+d.items.forEach((i) => counts[i.condition]++);
+const photoOf = (itemId: string) => d.photos.filter((p) => p.item_id === itemId);
+---
+<section class="dcard insp-head" aria-labelledby="insp-h">
+  <div class="insp-head__top">
+    <span class={`insp-badge insp-badge--${d.kind}`} aria-hidden="true"><Icon name="camera" /></span>
+    <div class="insp-head__txt">
+      <h2 id="insp-h">{x.kinds[d.kind]}</h2>
+      <p class="muted small">{d.property ? `${d.property.code} · ${d.property.name} · ${d.property.address}, ${d.property.city}` : ''}</p>
+    </div>
+    <div class="insp-head__act">
+      <Pill tone={d.status === 'completed' ? 'ok' : 'warn'}>{x.status[d.status]}</Pill>
+      <a class="btn btn--secondary btn--sm" href={pdfHref} data-testid="insp-pdf"><Icon name="download" /> {x.downloadPdf}</a>
+    </div>
+  </div>
+  <dl class="insp-facts">
+    <div><dt>{x.performed}</dt><dd>{date(d.performed_at, intl, { day: 'numeric', month: 'long', year: 'numeric' })}</dd></div>
+    <div><dt>{x.lease}</dt><dd>{d.lease ? `${d.lease.tenant?.full_name ?? '—'} · ${date(d.lease.start_date, intl)} – ${date(d.lease.end_date, intl)}` : x.leaseNone}</dd></div>
+    <div><dt>{x.rooms}</dt><dd>{rooms.length} · {fill(x.items, { n: d.items.length })} · {fill(x.photos, { n: d.photos.length })}</dd></div>
+    <div><dt>{t.common.status}</dt><dd>{d.completed_at ? fill(x.completedOn, { d: dateTime(d.completed_at, intl) }) : x.status.draft}</dd></div>
+  </dl>
+  {d.items.length > 0 && (
+    <div class="insp-bar" role="img" aria-label={(['good', 'fair', 'poor', 'na'] as const).map((c) => `${x.cond[c]}: ${counts[c]}`).join(', ')}>
+      {(['good', 'fair', 'poor', 'na'] as const).filter((c) => counts[c] > 0).map((c) => <span class={`insp-bar__seg insp-bar__seg--${c}`} style={`flex:${counts[c]}`}><span>{x.cond[c]} · {counts[c]}</span></span>)}
+    </div>
+  )}
+  {d.summary && <p class="insp-summary"><strong>{x.summary}:</strong> {d.summary}</p>}
+  {d.status === 'completed' && <p class="insp-lock"><Icon name="lock" /> {x.immutable}</p>}
+</section>
+
+<slot name="actions" />
+
+<section class="dcard" aria-labelledby="insp-rooms">
+  <h2 class="panel-h" id="insp-rooms"><Icon name="list" /> {x.roomsTitle}</h2>
+  {rooms.length === 0 ? <p class="empty">{t.common.none}</p> : (
+    <div class="insp-rooms">
+      {rooms.map(([room, items]) => (
+        <div class="insp-room">
+          <h3>{room}</h3>
+          <ul>
+            {items.map((it) => (
+              <li class="insp-item">
+                <span class="insp-item__name">{it.item}</span>
+                <Pill tone={tone(it.condition)}>{x.cond[it.condition]}</Pill>
+                <span class="insp-item__note">{it.note}</span>
+                {photoOf(it.id).length > 0 && <span class="insp-item__ph"><Icon name="camera" /> {photoOf(it.id).length}</span>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+    </div>
+  )}
+</section>
+
+<section class="dcard" aria-labelledby="insp-photos">
+  <h2 class="panel-h" id="insp-photos"><Icon name="camera" /> {x.photosTitle} <span class="muted small">({d.photos.length})</span></h2>
+  {d.photos.length === 0 ? <p class="empty">{t.common.none}</p> : (
+    <ul class="insp-gallery" data-testid="insp-gallery">
+      {d.photos.map((p, i) => (
+        <li>
+          <a href={`/files/inspection-photo/${p.id}?full=1`} target="_blank" rel="noopener">
+            <img src={`/files/inspection-photo/${p.id}`} alt={p.caption || `${x.photosTitle} ${i + 1}`} loading="lazy" decoding="async" width="320" height="240" />
+          </a>
+          <div class="insp-gallery__cap">
+            <strong>{i + 1}. {p.caption || '—'}</strong>
+            <small><Icon name="clock" /> {p.taken_at ? fill(x.takenAt, { d: dateTime(p.taken_at, intl) }) : fill(x.uploadedAt, { d: dateTime(p.uploaded_at, intl) })}</small>
+            {p.taken_at && <small class="muted">{fill(x.uploadedAt, { d: dateTime(p.uploaded_at, intl) })} · {bytes(p.size_bytes)}</small>}
+            {p.sha256 && <small class="insp-sha" title={`${x.fingerprint}: ${p.sha256}`}>SHA-256 <code>{p.sha256.slice(0, 12)}…</code></small>}
+          </div>
+        </li>
+      ))}
+    </ul>
+  )}
+</section>
+
+<section class="dcard" aria-labelledby="insp-acks">
+  <h2 class="panel-h" id="insp-acks"><Icon name="check" /> {x.acksTitle}</h2>
+  {d.acks.length === 0 ? <p class="empty">{x.noAcks}</p> : (
+    <ul class="insp-acks">
+      {d.acks.map((a) => (
+        <li><span class="insp-acks__ic" aria-hidden="true"><Icon name="check" /></span>
+          <span><strong>{fill(x.ackLine, { role: t.roles[a.role], d: dateTime(a.acknowledged_at, intl) })}</strong>{a.comment && <q>{a.comment}</q>}</span></li>
+      ))}
+    </ul>
+  )}
+</section>
+
+<style>
+  .insp-head__top { display: flex; align-items: center; gap: var(--sp-4); flex-wrap: wrap; }
+  .insp-head__txt { flex: 1; min-inline-size: 200px; }
+  .insp-head__txt h2 { margin: 0; font-size: var(--fs-xl); }
+  .insp-head__txt p { margin: 2px 0 0; }
+  .insp-head__act { display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; }
+  .insp-badge { display: grid; place-items: center; inline-size: 52px; block-size: 52px; border-radius: 14px; color: #fff; background: linear-gradient(135deg, #1a4fd6, #3b82f6); box-shadow: 0 10px 20px -12px #1a4fd6; }
+  .insp-badge--move_out { background: linear-gradient(135deg, #b45309, #f59e0b); box-shadow: 0 10px 20px -12px #b45309; }
+  .insp-badge--annual { background: linear-gradient(135deg, #0f766e, #14b8a6); box-shadow: 0 10px 20px -12px #0f766e; }
+  .insp-facts { display: grid; gap: var(--sp-3); grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); margin: var(--sp-5) 0 var(--sp-4); }
+  .insp-facts div { background: var(--d-bg, #f6f8fc); border-radius: 12px; padding: 10px 12px; }
+  .insp-facts dt { font-size: var(--fs-xs); color: var(--d-muted); }
+  .insp-facts dd { margin: 2px 0 0; font-weight: 600; font-size: var(--fs-sm); }
+  .insp-bar { display: flex; gap: 3px; block-size: 26px; border-radius: 99px; overflow: hidden; font-size: 11px; font-weight: 700; }
+  .insp-bar__seg { display: flex; align-items: center; justify-content: center; min-inline-size: 64px; color: #fff; white-space: nowrap; }
+  .insp-bar__seg--good { background: #16a34a; } .insp-bar__seg--fair { background: #f59e0b; } .insp-bar__seg--poor { background: #dc2626; } .insp-bar__seg--na { background: #94a3b8; }
+  .insp-summary { margin: var(--sp-4) 0 0; }
+  .insp-lock { display: flex; align-items: center; gap: 6px; margin: var(--sp-3) 0 0; font-size: var(--fs-xs); color: var(--d-muted); }
+  .insp-lock :global(.icon) { inline-size: 14px; block-size: 14px; }
+  .insp-rooms { display: grid; gap: var(--sp-4); }
+  @media (min-width: 1100px) { .insp-rooms { grid-template-columns: 1fr 1fr; } }
+  .insp-room { border: 1px solid var(--d-line); border-radius: 14px; overflow: hidden; }
+  .insp-room h3 { margin: 0; padding: 10px 14px; font-size: var(--fs-sm); background: #eef3ff; color: #1a4fd6; }
+  .insp-room ul { list-style: none; margin: 0; padding: 0; }
+  .insp-item { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; align-items: center; padding: 10px 14px; border-block-start: 1px solid var(--d-line); }
+  .insp-item__name { font-weight: 600; font-size: var(--fs-sm); }
+  .insp-item__note { grid-column: 1 / -1; font-size: var(--fs-xs); color: var(--d-muted); }
+  .insp-item__note:empty { display: none; }
+  .insp-item__ph { grid-column: 1 / -1; display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-xs); color: #1a4fd6; }
+  .insp-item__ph :global(.icon) { inline-size: 13px; block-size: 13px; }
+  .insp-gallery { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--sp-4); grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
+  .insp-gallery li { border: 1px solid var(--d-line); border-radius: 14px; overflow: hidden; background: #fff; }
+  .insp-gallery a { display: block; }
+  .insp-gallery img { display: block; inline-size: 100%; aspect-ratio: 4 / 3; object-fit: cover; background: #f1f5f9; transition: transform .2s; }
+  .insp-gallery a:hover img { transform: scale(1.03); }
+  .insp-gallery__cap { display: grid; gap: 2px; padding: 10px 12px; font-size: var(--fs-sm); }
+  .insp-gallery__cap small { display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; }
+  .insp-gallery__cap :global(.icon) { inline-size: 12px; block-size: 12px; }
+  .insp-sha { color: var(--d-muted); }
+  .insp-sha code { font-size: 10.5px; direction: ltr; unicode-bidi: isolate; }
+  .insp-acks { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--sp-3); }
+  .insp-acks li { display: flex; gap: var(--sp-3); align-items: flex-start; }
+  .insp-acks__ic { display: grid; place-items: center; flex: none; inline-size: 28px; block-size: 28px; border-radius: 50%; background: #ecfdf3; color: #15803d; }
+  .insp-acks__ic :global(.icon) { inline-size: 15px; block-size: 15px; }
+  .insp-acks q { display: block; color: var(--d-muted); font-size: var(--fs-sm); margin-block-start: 2px; }
+</style>

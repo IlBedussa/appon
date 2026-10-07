@@ -1,0 +1,41 @@
+---
+// Riquadro "conferma di presa visione" per proprietario e inquilino (scrive solo via public.acknowledge_inspection).
+import Icon from './Icon.astro';
+import Csrf from './Csrf.astro';
+import { fill } from '../i18n';
+import { ix } from '../i18n/inspections';
+import { dateTime } from '../lib/format';
+import type { InspectionFull } from '../lib/inspections';
+interface Props { d: InspectionFull }
+const { d } = Astro.props;
+const { intl, lang, user } = Astro.locals;
+const x = ix(lang);
+const mine = d.acks.find((a) => a.profile_id === user!.id);
+---
+{d.status === 'completed' && (mine ? (
+  <p class="ack-done" data-testid="ack-done"><Icon name="check" /> {fill(x.ackAlready, { d: dateTime(mine.acknowledged_at, intl) })}</p>
+) : (
+  <section class="dcard ack" aria-labelledby="ack-h" data-testid="ack-form">
+    <div class="ack__ic" aria-hidden="true"><Icon name="eye" /></div>
+    <div class="ack__body">
+      <h2 id="ack-h">{x.ackTitle}</h2>
+      <p class="small">{x.ackText}</p>
+      <form method="post" class="stack-sm">
+        <Csrf />
+        <div class="field">
+          <label for="ack-comment">{x.ackComment}</label>
+          <textarea class="textarea" id="ack-comment" name="comment" maxlength="1000" rows="2"></textarea>
+        </div>
+        <button class="btn btn--primary" type="submit"><Icon name="check" /> {x.ackButton}</button>
+      </form>
+    </div>
+  </section>
+))}
+<style>
+  .ack { display: flex; gap: var(--sp-4); align-items: flex-start; border: 1px solid #c7d7fe; background: linear-gradient(135deg, #eef3ff, #fff 70%); }
+  .ack__ic { display: grid; place-items: center; flex: none; inline-size: 44px; block-size: 44px; border-radius: 12px; background: #1a4fd6; color: #fff; }
+  .ack__body { flex: 1; }
+  .ack__body h2 { margin: 0 0 4px; font-size: var(--fs-lg); }
+  .ack__body p { color: var(--d-muted); margin: 0 0 var(--sp-3); }
+  .ack-done { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-radius: 12px; background: #ecfdf3; color: #15803d; font-weight: 600; margin: 0; }
+</style>

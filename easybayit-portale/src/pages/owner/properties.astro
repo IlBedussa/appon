@@ -1,0 +1,51 @@
+---
+// Immobili del proprietario con contratto attivo e inquilino (RLS).
+import AppLayout from '../../layouts/AppLayout.astro';
+import Money from '../../components/Money.astro';
+import { fill } from '../../i18n';
+import Icon from '../../components/Icon.astro';
+import { ix } from '../../i18n/inspections';
+import { date, lastMonths, monthLong } from '../../lib/format';
+import { prevMonth } from '../../lib/health-report';
+
+const { t, supabase, intl, lang } = Astro.locals;
+const r = ix(lang).report;
+// mesi disponibili per il report di stato: gli ultimi 12 mesi chiusi
+const months = lastMonths(13).map((m) => m.slice(0, 7)).filter((m) => m <= prevMonth()).reverse().slice(0, 12);
+const { data } = await supabase.from('properties')
+  .select('id, code, name, address, city, rooms, size_sqm, status, asking_rent_ils, leases(id, status, start_date, end_date, monthly_rent_ils, deposit_ils, tenant:tenants(full_name))')
+  .order('code');
+const properties = data ?? [];
+---
+<AppLayout title={t.nav.properties} active="properties">
+  {properties.length === 0 ? <p class="empty">{t.common.none}</p> : (
+    <div class="prop-grid">
+      {properties.map((p) => {
+        const l = p.leases?.find((x) => x.status === 'active');
+        return (
+          <article class="dcard prop-card">
+            <div class="prop-visual" aria-hidden="true"><span class="prop-letter">{p.code}</span></div>
+            <h3>{p.name}</h3>
+            <p class="muted">{p.address}, {p.city}{p.rooms ? ` · ${fill(t.owner.rooms, { n: p.rooms })}` : ''}{p.size_sqm ? ` · ${fill(t.owner.sqm, { n: p.size_sqm })}` : ''}</p>
+            <span class={`pill pill--${p.status}`}>{(t.status as Record<string, string>)[p.status]}</span>
+            <dl class="kv">
+              <div><dt>{l ? t.owner.rent : t.owner.asking}</dt><dd><Money v={l?.monthly_rent_ils ?? p.asking_rent_ils ?? 0} /></dd></div>
+              <div><dt>{t.owner.leaseEnd}</dt><dd>{l ? date(l.end_date, intl) : '—'}</dd></div>
+              <div><dt>{t.common.tenant}</dt><dd>{(l?.tenant as any)?.full_name ?? '—'}</dd></div>
+              {l && <div><dt>{t.tenant.deposit}</dt><dd><Money v={l.deposit_ils} /></dd></div>}
+            </dl>
+            <form method="get" action={`/owner/properties/${p.id}/report.pdf`} class="hr-form" target="_blank">
+              <label class="visually-hidden" for={`hr-${p.id}`}>{r.choose}</label>
+              <select class="select" id={`hr-${p.id}`} name="month">{months.map((m) => <option value={m}>{monthLong(m, intl)}</option>)}</select>
+              <button class="btn btn--secondary btn--sm" type="submit"><Icon name="chart" /> {r.short}<span class="visually-hidden">: {p.code}</span></button>
+            </form>
+          </article>
+        );
+      })}
+    </div>
+  )}
+</AppLayout>
+<style>
+  .hr-form { display: flex; gap: var(--sp-2); flex-wrap: wrap; margin-block-start: var(--sp-4); padding-block-start: var(--sp-4); border-block-start: 1px solid var(--d-line); }
+  .hr-form .select { flex: 1; min-inline-size: 140px; }
+</style>

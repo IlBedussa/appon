@@ -1,0 +1,22 @@
+---
+// Smistatore delle pagine del trust batch (una sola riga in src/pages/[...path].astro).
+import Pledge from './Pledge.astro';
+import HealthReport from './HealthReport.astro';
+import Inspections from './Inspections.astro';
+import BookCall from './BookCall.astro';
+import Switching from './Switching.astro';
+import ServiceMetrics from './ServiceMetrics.astro';
+import TrustSecurity from './TrustSecurity.astro';
+import type { Locale } from '../../../i18n/config';
+import type { TrustPageKey } from '../../../i18n/trust';
+import { SHOW_SERVICE_METRICS, SHOW_TRUST_SECURITY } from '../../../config/trust-flags';
+interface Props { lang: Locale; page: TrustPageKey }
+const { lang, page } = Astro.props;
+---
+{page === 'pledge' && <Pledge lang={lang} />}
+{page === 'report' && <HealthReport lang={lang} />}
+{page === 'inspections' && <Inspections lang={lang} />}
+{page === 'call' && <BookCall lang={lang} />}
+{page === 'switching' && <Switching lang={lang} />}
+{page === 'metrics' && SHOW_SERVICE_METRICS && <ServiceMetrics lang={lang} />}
+{page === 'security' && SHOW_TRUST_SECURITY && <TrustSecurity lang={lang} />}

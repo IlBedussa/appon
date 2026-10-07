@@ -1,0 +1,67 @@
+---
+// Unica route dinamica che genera TUTTE le pagine in tutte le lingue:
+//   inglese (predefinita) su /, /owners/, …  — ebraico su /he/… — francese su /fr/… — italiano su /it/…
+// Le API (src/pages/api/*) sono invece funzioni server (prerender = false).
+import Base from '../layouts/Base.astro';
+import Home from '../components/pages/Home.astro';
+import Owners from '../components/pages/Owners.astro';
+import Tenants from '../components/pages/Tenants.astro';
+import How from '../components/pages/How.astro';
+import Pricing from '../components/pages/Pricing.astro';
+import Portal from '../components/pages/Portal.astro';
+import About from '../components/pages/About.astro';
+import Faq from '../components/pages/Faq.astro';
+import Contact from '../components/pages/Contact.astro';
+import Legal from '../components/pages/Legal.astro';
+import Technology from '../components/pages/Technology.astro';
+import Care from '../components/pages/Care.astro';
+import B2B from '../components/pages/B2B.astro';
+import RentEstimate from '../components/pages/RentEstimate.astro';
+import YieldCalc from '../components/pages/YieldCalc.astro';
+import Guide from '../components/pages/Guide.astro';
+import Cities from '../components/pages/Cities.astro';
+import City from '../components/pages/City.astro';
+import LegalTax from '../components/pages/LegalTax.astro';
+import Blog from '../components/pages/Blog.astro';
+import TrustPage from '../components/pages/trust/TrustPage.astro';
+import { isTrustKey } from '../i18n/trust';
+import { locales, pages, defaultLocale, pageMeta, type Locale, type PageKey, type CityKey } from '../i18n/config';
+
+export function getStaticPaths() {
+  return locales.flatMap((lang) =>
+    // La dashboard demo ha route proprie (src/pages/portal/demo.astro e [lang]/portal/demo.astro).
+    pages.filter((p) => p.key !== 'demo').map((p) => {
+      const parts = [lang === defaultLocale ? '' : lang, p.slug].filter(Boolean);
+      return { params: { path: parts.length ? parts.join('/') : undefined }, props: { lang, page: p.key } };
+    })
+  );
+}
+
+interface Props { lang: Locale; page: PageKey }
+const { lang, page } = Astro.props;
+const meta = pageMeta(lang, page);
+const city = page.startsWith('city-') ? (page.slice(5) as CityKey) : null;
+---
+<Base lang={lang} page={page} title={meta.title} description={meta.description}>
+  {page === 'home' && <Home lang={lang} />}
+  {page === 'owners' && <Owners lang={lang} />}
+  {page === 'tenants' && <Tenants lang={lang} />}
+  {page === 'how' && <How lang={lang} />}
+  {page === 'pricing' && <Pricing lang={lang} />}
+  {page === 'portal' && <Portal lang={lang} />}
+  {page === 'technology' && <Technology lang={lang} />}
+  {page === 'care' && <Care lang={lang} />}
+  {page === 'b2b' && <B2B lang={lang} />}
+  {page === 'rent' && <RentEstimate lang={lang} />}
+  {page === 'yield' && <YieldCalc lang={lang} />}
+  {page === 'guide' && <Guide lang={lang} />}
+  {page === 'cities' && <Cities lang={lang} />}
+  {page === 'legal' && <LegalTax lang={lang} />}
+  {page === 'blog' && <Blog lang={lang} />}
+  {isTrustKey(page) && <TrustPage lang={lang} page={page} />}
+  {city && <City lang={lang} city={city} />}
+  {page === 'about' && <About lang={lang} />}
+  {page === 'faq' && <Faq lang={lang} />}
+  {page === 'contact' && <Contact lang={lang} />}
+  {(page === 'privacy' || page === 'terms' || page === 'accessibility') && <Legal lang={lang} kind={page} />}
+</Base>

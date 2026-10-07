@@ -1,0 +1,39 @@
+---
+// Garanzie di servizio scritte nel contratto (NON garanzie finanziarie). Marcatore legale discreto.
+import Icon from '../Icon.astro';
+import T from '../T.astro';
+import { tx, type Locale } from '../../i18n/config';
+interface Props { lang: Locale; surface?: boolean }
+const { lang, surface = false } = Astro.props;
+const x = tx(lang);
+const g = x.offer.guarantees;
+---
+<section class:list={['section', { 'section--surface': surface }]} id="guarantees">
+  <div class="container">
+    <div class="section-head" data-reveal>
+      <p class="eyebrow"><Icon name="shield" /> {g.eyebrow}</p>
+      <h2>{g.title}</h2>
+      <p>{g.lead} <span class="lawyer-mark"><T text={x.L} /></span></p>
+    </div>
+    <div class="guar">
+      {g.items.map((it, i) => (
+        <article class="guar__item" data-reveal style={`transition-delay:${i * 60}ms`}>
+          <span class="icon-badge"><Icon name={it.icon} /></span>
+          <div>
+            <h3>{it.title}</h3>
+            <p><T text={it.text} /></p>
+          </div>
+        </article>
+      ))}
+    </div>
+  </div>
+</section>
+<style>
+  .guar { display: grid; gap: var(--sp-4); }
+  @media (min-width: 720px) { .guar { grid-template-columns: 1fr 1fr; } }
+  @media (min-width: 1100px) { .guar { grid-template-columns: repeat(3, 1fr); } }
+  .guar__item { display: flex; gap: var(--sp-4); padding: var(--sp-5); border-radius: var(--r-lg); background: #fff; border: 1px solid var(--c-line); }
+  .guar__item .icon-badge { margin: 0; flex: none; }
+  .guar__item h3 { font-size: var(--fs-md); margin: 0 0 var(--sp-1); }
+  .guar__item p { margin: 0; color: var(--c-ink-2); font-size: var(--fs-sm); }
+</style>

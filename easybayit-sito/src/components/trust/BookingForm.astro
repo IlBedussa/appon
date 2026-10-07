@@ -1,0 +1,241 @@
+---
+// Prenotazione videochiamata (15 min): scelta del fuso orario, del giorno e dell'orario + dati di contatto.
+// Backend: /api/book-call/ (MOCK locale, vedi src/pages/api/book-call.ts). Nessuna email, nessun calendario reale.
+import TIcon from './TIcon.astro';
+import T from '../T.astro';
+import { tt, url, langMeta, type Locale } from '../../i18n/config';
+interface Props { lang: Locale }
+const { lang } = Astro.props;
+const x = tt(lang);
+const c = x.call;
+const ctx = {
+  intl: langMeta[lang].intl, lang, il: c.israelTime, you: c.yourTime, selected: c.selected, okText: c.okText, noSlots: c.noSlots,
+  required: c.required, emailInvalid: c.emailInvalid, error: c.error, sending: c.sending, submit: c.submit, okMock: c.okMock,
+  icsTitle: `Easybayit — ${c.eyebrow}`,
+};
+const common = ['Europe/London', 'Europe/Paris', 'Europe/Rome', 'Europe/Berlin', 'Asia/Jerusalem', 'America/New_York', 'America/Chicago', 'America/Los_Angeles', 'America/Toronto', 'America/Sao_Paulo', 'Africa/Johannesburg', 'Australia/Sydney'];
+---
+<div class="bk" data-booking data-ctx={JSON.stringify(ctx)}>
+  <noscript><p class="notice"><TIcon name="info" /> <a href={url(lang, 'contact')}>{x.strip.callCta}</a></p></noscript>
+  <form class="bk__form" novalidate>
+    <div class="bk__pick">
+      <div class="field bk__tz">
+        <label for="bk-tz"><TIcon name="globe" /> {c.tzLabel}</label>
+        <select id="bk-tz" class="select" name="tz" aria-describedby="bk-tz-help">
+          {common.map((z) => <option value={z}>{z.replace(/_/g, ' ')}</option>)}
+        </select>
+        <small id="bk-tz-help" class="bk__help">{c.tzDetected}</small>
+      </div>
+      <fieldset class="bk__days">
+        <legend><TIcon name="calendar" /> {c.dateLabel}</legend>
+        <div class="bk__days-list" data-days role="radiogroup" aria-label={c.dateLabel}></div>
+      </fieldset>
+      <fieldset class="bk__times">
+        <legend><TIcon name="clock" /> {c.timeLabel}</legend>
+        <div class="bk__times-list" data-times role="radiogroup" aria-label={c.timeLabel}></div>
+        <p class="bk__help" data-times-empty hidden>{c.noSlots}</p>
+      </fieldset>
+      <p class="bk__hours"><TIcon name="info" /> <span><T text={c.hours} /></span></p>
+    </div>
+
+    <div class="bk__details">
+      <div class="bk__summary" data-summary aria-live="polite">
+        <span class="bk__summary-ic"><TIcon name="video" /></span>
+        <div><strong>{c.eyebrow}</strong><p data-summary-text>—</p></div>
+      </div>
+      <div class="field"><label for="bk-name">{c.name} <span class="req" aria-hidden="true">*</span></label><input class="input" id="bk-name" name="name" autocomplete="name" required maxlength="100" /></div>
+      <div class="field"><label for="bk-email">{c.email} <span class="req" aria-hidden="true">*</span></label><input class="input" id="bk-email" name="email" type="email" autocomplete="email" required maxlength="160" /></div>
+      <div class="field"><label for="bk-phone">{c.phone}</label><input class="input" id="bk-phone" name="phone" type="tel" autocomplete="tel" maxlength="25" dir="ltr" /></div>
+      <div class="bk__row">
+        <div class="field"><label for="bk-lang">{c.langLabel}</label>
+          <select class="select" id="bk-lang" name="lang">{(['en', 'he', 'fr', 'it'] as const).map((l) => <option value={l} selected={l === lang}>{langMeta[l].label}</option>)}</select></div>
+        <div class="field"><label for="bk-platform">{c.platformLabel}</label>
+          <select class="select" id="bk-platform" name="platform">{Object.entries(c.platforms).map(([k, v]) => <option value={k}>{v}</option>)}</select></div>
+      </div>
+      <small class="bk__help"><T text={c.platformNote} /></small>
+      <div class="field"><label for="bk-topic">{c.topicLabel}</label>
+        <select class="select" id="bk-topic" name="topic">{Object.entries(c.topics).map(([k, v]) => <option value={k}>{v}</option>)}</select></div>
+      <div class="field"><label for="bk-notes">{c.notes}</label><textarea class="textarea" id="bk-notes" name="notes" maxlength="1000" rows="3"></textarea></div>
+      <div class="hp" aria-hidden="true"><label>Website <input name="website" tabindex="-1" autocomplete="off" /></label></div>
+      <label class="check"><input type="checkbox" name="consent" required /> <span>{c.consent}</span></label>
+      <p class="field-error" data-error role="alert"></p>
+      <button class="btn btn--primary bk__submit" type="submit"><TIcon name="calendar" /> <span data-submit-text>{c.submit}</span></button>
+      <p class="bk__privacy"><TIcon name="lock" /> {c.privacy}</p>
+    </div>
+  </form>
+
+  <div class="bk__ok" data-ok hidden tabindex="-1">
+    <span class="bk__ok-ic"><TIcon name="checkCircle" /></span>
+    <h2>{c.okTitle}</h2>
+    <p data-ok-text></p>
+    <p class="bk__mock" data-ok-mock hidden><TIcon name="info" /> {c.okMock}</p>
+    <div class="btn-row">
+      <a class="btn btn--primary" data-ics download="easybayit-call.ics" href="#"><TIcon name="download" /> {c.addCal}</a>
+      <button class="btn btn--secondary" type="button" data-again>{c.again}</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  import { bookableDays, slotsFor, toIcs, IL_TZ, BOOKING_RULES } from '../../lib/trust/booking';
+  document.querySelectorAll<HTMLElement>('[data-booking]').forEach((root) => {
+    const ctx = JSON.parse(root.dataset.ctx!);
+    const form = root.querySelector('form')!;
+    const tzSel = form.querySelector<HTMLSelectElement>('#bk-tz')!;
+    const daysEl = root.querySelector<HTMLElement>('[data-days]')!;
+    const timesEl = root.querySelector<HTMLElement>('[data-times]')!;
+    const empty = root.querySelector<HTMLElement>('[data-times-empty]')!;
+    const sumText = root.querySelector<HTMLElement>('[data-summary-text]')!;
+    const errEl = root.querySelector<HTMLElement>('[data-error]')!;
+    const fill = (s: string, v: Record<string, string>) => s.replace(/\{(\w+)\}/g, (_, k) => v[k] ?? '');
+    let day = '', utc = 0;
+    const started = Date.now();
+
+    // Fusi orari: elenco completo se disponibile, con quello rilevato selezionato.
+    const detected = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/London';
+    const all: string[] = (Intl as any).supportedValuesOf ? (Intl as any).supportedValuesOf('timeZone') : [...tzSel.options].map((o) => o.value);
+    if (!all.includes(detected)) all.unshift(detected);
+    if (!all.includes(IL_TZ)) all.push(IL_TZ);
+    tzSel.replaceChildren(...all.map((z) => { const o = new Option(z.replace(/_/g, ' '), z); o.selected = z === detected; return o; }));
+    const tz = () => tzSel.value;
+
+    const fmt = (ms: number, zone: string, o: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat(ctx.intl, { timeZone: zone, ...o }).format(ms);
+    const timeOpt: Intl.DateTimeFormatOptions = { hour: '2-digit', minute: '2-digit' };
+    const longOpt: Intl.DateTimeFormatOptions = { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' };
+    const dayKey = (ms: number, zone: string) => new Intl.DateTimeFormat('en-CA', { timeZone: zone }).format(ms);
+
+    const renderDays = () => {
+      const days = bookableDays();
+      daysEl.replaceChildren(...days.map((d, i) => {
+        const ms = Date.parse(d + 'T12:00:00Z');
+        const b = document.createElement('button');
+        b.type = 'button'; b.setAttribute('role', 'radio'); b.dataset.day = d;
+        b.innerHTML = `<span class="bk__wd">${fmt(ms, 'UTC', { weekday: 'short' })}</span><span class="bk__dn">${fmt(ms, 'UTC', { day: 'numeric' })}</span><span class="bk__mo">${fmt(ms, 'UTC', { month: 'short' })}</span>`;
+        b.setAttribute('aria-label', fmt(ms, 'UTC', { weekday: 'long', day: 'numeric', month: 'long' }));
+        b.addEventListener('click', () => selectDay(d));
+        if (i === 0 && !day) day = d;
+        return b;
+      }));
+      if (!days.includes(day)) day = days[0] ?? '';
+      selectDay(day);
+    };
+    const selectDay = (d: string) => {
+      day = d;
+      daysEl.querySelectorAll<HTMLButtonElement>('button').forEach((b) => { const on = b.dataset.day === d; b.setAttribute('aria-checked', String(on)); b.tabIndex = on ? 0 : -1; });
+      renderTimes();
+    };
+    const renderTimes = () => {
+      const slots = day ? slotsFor(day) : [];
+      empty.hidden = slots.length > 0;
+      const same = tz() === IL_TZ;
+      timesEl.replaceChildren(...slots.map((s) => {
+        const b = document.createElement('button');
+        b.type = 'button'; b.setAttribute('role', 'radio'); b.dataset.utc = String(s.utc);
+        const otherDay = dayKey(s.utc, tz()) !== day;
+        const local = fmt(s.utc, tz(), timeOpt);
+        b.innerHTML = `<span class="bk__lt">${otherDay ? `<small>${fmt(s.utc, tz(), { weekday: 'short' })}</small> ` : ''}${local}</span>${same ? '' : `<span class="bk__il">${ctx.il} ${fmt(s.utc, IL_TZ, timeOpt)}</span>`}`;
+        b.setAttribute('aria-label', `${fmt(s.utc, tz(), longOpt)}${same ? '' : ` — ${ctx.il} ${fmt(s.utc, IL_TZ, timeOpt)}`}`);
+        b.addEventListener('click', () => selectTime(s.utc));
+        return b;
+      }));
+      if (!slots.some((s) => s.utc === utc)) utc = 0;
+      selectTime(utc);
+    };
+    const selectTime = (u: number) => {
+      utc = u;
+      timesEl.querySelectorAll<HTMLButtonElement>('button').forEach((b) => { const on = Number(b.dataset.utc) === u; b.setAttribute('aria-checked', String(on)); b.tabIndex = on || (!u && b === timesEl.firstElementChild) ? 0 : -1; });
+      sumText.textContent = u ? fill(ctx.selected, { local: fmt(u, tz(), longOpt), il: fmt(u, IL_TZ, timeOpt) }) : '—';
+      root.querySelector('[data-summary]')!.classList.toggle('is-set', !!u);
+    };
+    // Frecce tra le opzioni dei radiogroup
+    [daysEl, timesEl].forEach((g) => g.addEventListener('keydown', (e) => {
+      const btns = [...g.querySelectorAll<HTMLButtonElement>('button')];
+      const i = btns.indexOf(document.activeElement as HTMLButtonElement);
+      if (i < 0) return;
+      const rtl = document.documentElement.dir === 'rtl';
+      const step = { ArrowRight: rtl ? -1 : 1, ArrowLeft: rtl ? 1 : -1, ArrowDown: 1, ArrowUp: -1 }[e.key];
+      if (!step) return;
+      e.preventDefault();
+      const n = btns[(i + step + btns.length) % btns.length]; n.focus(); n.click();
+    }));
+    tzSel.addEventListener('change', renderTimes);
+    renderDays();
+
+    // Invio
+    const submitText = root.querySelector<HTMLElement>('[data-submit-text]')!;
+    const ok = root.querySelector<HTMLElement>('[data-ok]')!;
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      errEl.textContent = '';
+      const fd = new FormData(form);
+      const email = String(fd.get('email') ?? '').trim();
+      if (!utc || String(fd.get('name') ?? '').trim().length < 2 || !email || !fd.get('consent')) { errEl.textContent = ctx.required; return; }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) { errEl.textContent = ctx.emailInvalid; return; }
+      const btn = form.querySelector<HTMLButtonElement>('.bk__submit')!;
+      btn.disabled = true; submitText.textContent = ctx.sending;
+      try {
+        const r = await fetch('/api/book-call/', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+          name: fd.get('name'), email, phone: fd.get('phone'), notes: fd.get('notes'), lang: fd.get('lang'), topic: fd.get('topic'), platform: fd.get('platform'),
+          tz: tz(), utc, consent: true, website: fd.get('website'), elapsed: Date.now() - started,
+        }) });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok || !d.ok) throw new Error(d.error || 'send');
+        const local = fmt(utc, tz(), longOpt), il = fmt(utc, IL_TZ, { weekday: 'short', hour: '2-digit', minute: '2-digit' });
+        root.querySelector<HTMLElement>('[data-ok-text]')!.textContent = fill(ctx.okText, { local, il });
+        root.querySelector<HTMLElement>('[data-ok-mock]')!.hidden = !d.mock;
+        const ics = toIcs({ utc, durationMin: BOOKING_RULES.durationMin, title: ctx.icsTitle, description: `${fill(ctx.okText, { local, il })}${d.mock ? '\n' + ctx.okMock : ''}`, uid: d.id || String(utc) });
+        root.querySelector<HTMLAnchorElement>('[data-ics]')!.href = URL.createObjectURL(new Blob([ics], { type: 'text/calendar' }));
+        form.hidden = true; ok.hidden = false; ok.focus();
+      } catch {
+        errEl.textContent = ctx.error;
+      } finally { btn.disabled = false; submitText.textContent = ctx.submit; }
+    });
+    root.querySelector('[data-again]')!.addEventListener('click', () => { ok.hidden = true; form.hidden = false; utc = 0; renderDays(); });
+  });
+</script>
+
+<style>
+  .bk { border: 1px solid var(--c-line); border-radius: var(--r-xl); background: #fff; box-shadow: 0 30px 60px -28px rgb(11 19 36 / .3); overflow: hidden; }
+  .bk__form { display: grid; }
+  @media (min-width: 980px) { .bk__form { grid-template-columns: 1.15fr 1fr; } }
+  .bk__pick { padding: var(--sp-5); display: grid; gap: var(--sp-5); align-content: start; background: linear-gradient(180deg, var(--c-surface), #fff 70%); border-block-end: 1px solid var(--c-line); min-inline-size: 0; }
+  @media (min-width: 980px) { .bk__pick { padding: var(--sp-6); border-block-end: 0; border-inline-end: 1px solid var(--c-line); } }
+  .bk__details { padding: var(--sp-5); display: grid; gap: var(--sp-4); align-content: start; }
+  @media (min-width: 980px) { .bk__details { padding: var(--sp-6); } }
+  .bk fieldset { border: 0; margin: 0; padding: 0; min-inline-size: 0; }
+  .bk legend, .bk__tz label { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: var(--fs-sm); margin-block-end: var(--sp-2); }
+  .bk legend :global(.icon), .bk__tz label :global(.icon) { color: var(--c-primary); }
+  .bk__help { color: var(--c-muted); font-size: var(--fs-xs); }
+  .bk__days-list { display: flex; gap: 8px; overflow-x: auto; padding: 4px 2px 8px; scroll-snap-type: x proximity; scrollbar-width: thin; }
+  .bk__days-list :global(button) { flex: none; scroll-snap-align: start; display: grid; justify-items: center; gap: 2px; inline-size: 64px; padding: 10px 0; border-radius: 14px; border: 1px solid var(--c-line-strong); background: #fff; color: var(--c-ink); cursor: pointer; font: inherit; transition: border-color .15s, box-shadow .15s, transform .15s; }
+  .bk__days-list :global(button:hover) { border-color: var(--c-primary); transform: translateY(-1px); }
+  .bk__days-list :global(button[aria-checked='true']) { background: var(--c-primary); border-color: var(--c-primary); color: #fff; box-shadow: 0 10px 20px -10px var(--c-primary); }
+  .bk__days-list :global(button:focus-visible), .bk__times-list :global(button:focus-visible) { outline: 3px solid var(--c-primary-100); outline-offset: 2px; }
+  .bk__days-list :global(.bk__wd) { font-size: 12px; font-weight: 600; opacity: .8; }
+  .bk__days-list :global(.bk__dn) { font-size: 1.35rem; font-weight: 700; line-height: 1.1; }
+  .bk__days-list :global(.bk__mo) { font-size: 12px; opacity: .8; }
+  .bk__times-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 8px; }
+  .bk__times-list :global(button) { display: grid; gap: 1px; justify-items: center; padding: 9px 6px; border-radius: 12px; border: 1px solid var(--c-line-strong); background: #fff; color: var(--c-ink); cursor: pointer; font: inherit; transition: border-color .15s, background .15s; }
+  .bk__times-list :global(button:hover) { border-color: var(--c-primary); background: var(--c-primary-50); }
+  .bk__times-list :global(button[aria-checked='true']) { background: var(--c-ink); border-color: var(--c-ink); color: #fff; }
+  .bk__times-list :global(.bk__lt) { font-weight: 700; font-variant-numeric: tabular-nums; }
+  .bk__times-list :global(.bk__lt small) { font-weight: 500; font-size: 11px; opacity: .8; }
+  .bk__times-list :global(.bk__il) { font-size: 11px; opacity: .7; font-variant-numeric: tabular-nums; }
+  .bk__hours { display: flex; gap: 8px; align-items: flex-start; margin: 0; font-size: var(--fs-xs); color: var(--c-muted); }
+  .bk__hours :global(.icon) { flex: none; margin-block-start: 2px; }
+  .bk__summary { display: flex; gap: var(--sp-3); align-items: center; padding: var(--sp-3) var(--sp-4); border-radius: 14px; background: var(--c-surface-2); border: 1px dashed var(--c-line-strong); transition: background .2s, border-color .2s; }
+  .bk__summary.is-set { background: var(--c-primary-50); border: 1px solid var(--c-primary-100); }
+  .bk__summary p { margin: 0; font-size: var(--fs-sm); color: var(--c-ink-2); }
+  .bk__summary-ic { display: grid; place-items: center; inline-size: 44px; block-size: 44px; border-radius: 12px; background: #fff; color: var(--c-primary); box-shadow: var(--sh-sm); flex: none; }
+  .bk__row { display: grid; gap: var(--sp-4); }
+  @media (min-width: 560px) { .bk__row { grid-template-columns: 1fr 1fr; } }
+  .bk__submit { inline-size: 100%; }
+  .bk__privacy { display: flex; align-items: center; gap: 6px; margin: 0; font-size: var(--fs-xs); color: var(--c-muted); }
+  .bk :global([hidden]) { display: none !important; }
+  .bk__ok { padding: var(--sp-8) var(--sp-5); text-align: center; display: grid; justify-items: center; gap: var(--sp-3); }
+  .bk__ok:focus { outline: none; }
+  .bk__ok-ic { display: grid; place-items: center; inline-size: 72px; block-size: 72px; border-radius: 50%; background: var(--c-success-50); color: var(--c-success); }
+  .bk__ok-ic :global(.icon) { inline-size: 36px; block-size: 36px; }
+  .bk__ok p { max-inline-size: 56ch; color: var(--c-ink-2); margin: 0; }
+  .bk__mock { display: inline-flex; gap: 6px; align-items: center; font-size: var(--fs-xs); background: var(--c-warning-50); color: var(--c-warning) !important; border-radius: 999px; padding: 4px 12px; }
+</style>

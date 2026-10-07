@@ -1,0 +1,63 @@
+---
+// Login email + password. Rate limit per IP e per email (Postgres), messaggio generico in caso di errore.
+import AuthLayout from '../layouts/AuthLayout.astro';
+import Field from '../components/Field.astro';
+import Csrf from '../components/Csrf.astro';
+import { z, email as emailSchema, formToObject } from '../lib/validation';
+import { hit, reset } from '../lib/ratelimit';
+import { logEvent, logSystemEvent } from '../lib/audit';
+import { homeFor, safeNext } from '../lib/session';
+import { LOGIN_MAX_ATTEMPTS } from 'astro:env/server';
+import { createHash } from 'node:crypto';
+
+const { t, supabase, ip } = Astro.locals;
+const next = Astro.url.searchParams.get('next');
+let error = '';
+let emailValue = '';
+if (Astro.url.searchParams.get('e') === 'inactive') error = t.common.forbidden;
+
+if (Astro.request.method === 'POST') {
+  const fd = await Astro.request.formData();
+  const parsed = z.object({ email: emailSchema, password: z.string().min(1).max(128) }).safeParse(formToObject(fd));
+  emailValue = String(fd.get('email') ?? '').slice(0, 320);
+  if (!parsed.success) {
+    error = t.auth.invalid;
+  } else {
+    const { email, password } = parsed.data;
+    const okIp = await hit('login-ip', ip, 100, 900); // tetto per IP (uffici/NAT condivisi); il limite stretto è per email
+    const okEmail = await hit('login-email', email, LOGIN_MAX_ATTEMPTS, 900);
+    if (!okIp || !okEmail) {
+      error = t.auth.rateLimited;
+      await logSystemEvent('auth.login_rate_limited', { email_sha: createHash('sha256').update(email).digest('hex').slice(0, 16) });
+      Astro.response.status = 429;
+    } else {
+      const { data, error: authErr } = await supabase.auth.signInWithPassword({ email, password });
+      if (authErr || !data.user) {
+        error = t.auth.invalid;
+        await logSystemEvent('auth.login_failed', { email_sha: createHash('sha256').update(email).digest('hex').slice(0, 16) });
+        Astro.response.status = 401;
+      } else {
+        await reset('login-email', email);
+        await logEvent(supabase, 'auth.login', 'auth', data.user.id, { ua: (Astro.request.headers.get('user-agent') ?? '').slice(0, 120) });
+        const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+        const { data: prof } = await supabase.from('profiles').select('role').eq('id', data.user.id).maybeSingle();
+        const dest = safeNext(next, homeFor(prof?.role));
+        if (aal?.nextLevel === 'aal2' && aal.currentLevel !== 'aal2') return Astro.redirect(`/mfa?next=${encodeURIComponent(dest)}`, 303);
+        return Astro.redirect(dest, 303);
+      }
+    }
+  }
+}
+---
+<AuthLayout title={t.auth.signIn}>
+  <h1>{t.auth.loginTitle}</h1>
+  <p class="sub">{t.auth.loginSub}</p>
+  {error && <p class="form-status" data-type="error" role="alert" id="login-error">{error}</p>}
+  <form method="post" novalidate={false}>
+    <Csrf />
+    <Field name="email" type="email" label={t.auth.email} value={emailValue} required autocomplete="username" maxlength={320} />
+    <Field name="password" type="password" label={t.auth.password} required autocomplete="current-password" maxlength={128} />
+    <button type="submit" class="btn btn--primary">{t.auth.signIn}</button>
+  </form>
+  <p class="auth-links"><a href="/forgot-password">{t.auth.forgot}</a></p>
+</AuthLayout>

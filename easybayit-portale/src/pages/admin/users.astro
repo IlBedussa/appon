@@ -1,0 +1,132 @@
+---
+// Utenti e inviti. L'invito usa la service key (solo server) DOPO aver verificato che il chiamante
+// sia staff/admin con sessione 2FA. Solo gli admin gestiscono account staff/admin e ruoli.
+import AppLayout from '../../layouts/AppLayout.astro';
+import Field from '../../components/Field.astro';
+import Csrf from '../../components/Csrf.astro';
+import Icon from '../../components/Icon.astro';
+import Pill from '../../components/Pill.astro';
+import { z, formToObject, email, optUuid } from '../../lib/validation';
+import { adminClient } from '../../lib/supabase';
+import { setFlash } from '../../lib/flash';
+import { fill, locales, langMeta } from '../../i18n';
+import { dateTime } from '../../lib/format';
+import { isStaffRole } from '../../lib/session';
+import { SITE_URL } from 'astro:env/server';
+
+const { t, supabase, profile, aal, user, intl } = Astro.locals;
+const isAdmin = profile!.role === 'admin';
+if (!isStaffRole(profile!.role) || aal.current !== 'aal2') return Astro.rewrite('/404');
+const roles = ['owner', 'tenant', 'staff', 'admin'] as const;
+const audit = (action: string, entityId: string, meta: Record<string, unknown>) =>
+  adminClient().from('audit_log').insert({ actor_id: user!.id, actor_role: profile!.role, action, entity: 'profiles', entity_id: entityId, meta });
+let error = '';
+
+if (Astro.request.method === 'POST') {
+  const fd = await Astro.request.formData();
+  const action = fd.get('action');
+  if (action === 'invite') {
+    const p = z.object({ email, full_name: z.string().trim().min(1).max(200), role: z.enum(roles), link_id: optUuid, locale: z.enum(locales) }).safeParse(formToObject(fd));
+    if (!p.success) error = t.common.invalid;
+    else if (!isAdmin && (p.data.role === 'staff' || p.data.role === 'admin')) error = t.admin.users.adminOnly;
+    else {
+      const adm = adminClient();
+      const { data, error: e } = await adm.auth.admin.inviteUserByEmail(p.data.email, { data: { full_name: p.data.full_name, locale: p.data.locale }, redirectTo: `${SITE_URL}/set-password` });
+      if (e || !data.user) error = e?.message?.toLowerCase().includes('already') ? t.admin.users.exists : t.common.error;
+      else {
+        const uid = data.user.id;
+        await adm.auth.admin.updateUserById(uid, { app_metadata: { role: p.data.role } });
+        await adm.from('profiles').update({ role: p.data.role, full_name: p.data.full_name, locale: p.data.locale }).eq('id', uid);
+        if (p.data.link_id && (p.data.role === 'owner' || p.data.role === 'tenant')) {
+          await adm.from(p.data.role === 'owner' ? 'owners' : 'tenants').update({ profile_id: uid }).eq('id', p.data.link_id).is('profile_id', null);
+        }
+        await audit('user.invited', uid, { role: p.data.role });
+        setFlash(Astro.cookies, 'success', fill(t.admin.users.invited, { e: p.data.email }));
+        return Astro.redirect('/admin/users', 303);
+      }
+    }
+  } else if ((action === 'deactivate' || action === 'activate' || action === 'role') && isAdmin) {
+    const uid = z.uuid().safeParse(fd.get('id'));
+    if (uid.success && uid.data !== user!.id) {
+      const adm = adminClient();
+      if (action === 'role') {
+        const r = z.enum(roles).safeParse(fd.get('role'));
+        if (r.success) {
+          await adm.auth.admin.updateUserById(uid.data, { app_metadata: { role: r.data } });
+          await adm.from('profiles').update({ role: r.data }).eq('id', uid.data);
+          await audit('user.role_changed', uid.data, { role: r.data });
+        }
+      } else {
+        const active = action === 'activate';
+        await adm.from('profiles').update({ is_active: active }).eq('id', uid.data);
+        // il ban blocca anche i refresh token esistenti
+        await adm.auth.admin.updateUserById(uid.data, { ban_duration: active ? 'none' : '876000h' });
+        await audit(active ? 'user.activated' : 'user.deactivated', uid.data, {});
+      }
+      setFlash(Astro.cookies, 'success', t.admin.updated);
+    } else setFlash(Astro.cookies, 'error', t.common.forbidden);
+    return Astro.redirect('/admin/users', 303);
+  }
+}
+
+const [{ data: profiles }, { data: owners }, { data: tenants }, list] = await Promise.all([
+  supabase.from('profiles').select('id, role, full_name, email, is_active, created_at').order('created_at', { ascending: false }),
+  supabase.from('owners').select('id, full_name').is('profile_id', null).order('full_name'),
+  supabase.from('tenants').select('id, full_name').is('profile_id', null).order('full_name'),
+  adminClient().auth.admin.listUsers({ perPage: 1000 }),
+]);
+const authById = new Map((list.data?.users ?? []).map((u) => [u.id, u]));
+const linkOptions = [{ value: '', label: t.admin.users.linkNone },
+  ...(owners ?? []).map((o) => ({ value: o.id, label: `${t.roles.owner}: ${o.full_name}` })),
+  ...(tenants ?? []).map((o) => ({ value: o.id, label: `${t.roles.tenant}: ${o.full_name}` }))];
+---
+<AppLayout title={t.nav.users} active="users">
+  <details class="create" open={!!error}>
+    <summary><Icon name="mail" /> {t.admin.users.invite}</summary>
+    <div class="create-body">
+      {error && <p class="form-status" data-type="error" role="alert">{error}</p>}
+      <form method="post" class="form-grid">
+        <Csrf /><input type="hidden" name="action" value="invite" />
+        <Field name="email" type="email" label={t.common.email} required maxlength={320} />
+        <Field name="full_name" label={t.admin.fields.full_name} required maxlength={200} />
+        <Field name="role" label={t.admin.users.role} required options={roles.filter((r) => isAdmin || r === 'owner' || r === 'tenant').map((r) => ({ value: r, label: t.roles[r] }))} />
+        <Field name="link_id" label={t.admin.users.link} options={linkOptions} />
+        <Field name="locale" label={t.sec.prefLang} required options={locales.map((l) => ({ value: l, label: langMeta[l].label }))} />
+        <div class="form-actions span-2"><button class="btn btn--primary btn--sm" type="submit"><Icon name="mail" /> {t.admin.users.invite}</button></div>
+      </form>
+    </div>
+  </details>
+  <div class="table-wrap dtable dcard flush">
+    <table>
+      <caption class="visually-hidden">{t.nav.users}</caption>
+      <thead><tr><th scope="col">{t.common.name}</th><th scope="col">{t.admin.users.role}</th><th scope="col">{t.admin.users.mfa}</th><th scope="col">{t.admin.users.lastSignIn}</th><th scope="col">{t.common.status}</th>{isAdmin && <th scope="col">{t.common.actions}</th>}</tr></thead>
+      <tbody>
+        {(profiles ?? []).map((p) => {
+          const au = authById.get(p.id);
+          const mfa = (au?.factors ?? []).some((f) => f.status === 'verified');
+          return (
+            <tr>
+              <th scope="row">{p.full_name || '—'}<br /><small class="muted ltr">{p.email}</small></th>
+              <td>{t.roles[p.role as keyof typeof t.roles]}</td>
+              <td>{mfa ? <span class="badge-mfa-on">{t.sec.on}</span> : t.sec.off}</td>
+              <td class="nowrap">{au?.last_sign_in_at ? dateTime(au.last_sign_in_at, intl) : '—'}</td>
+              <td>{p.is_active ? <Pill tone="ok">{t.admin.users.active}</Pill> : <Pill tone="urgent">{t.admin.users.deactivate}</Pill>}</td>
+              {isAdmin && (
+                <td>{p.id !== user!.id && (
+                  <div class="row-actions">
+                    <form method="post" class="row-actions"><Csrf /><input type="hidden" name="action" value="role" /><input type="hidden" name="id" value={p.id} />
+                      <label class="visually-hidden" for={`role-${p.id}`}>{t.admin.users.changeRole}</label>
+                      <select class="select dsel" id={`role-${p.id}`} name="role">{roles.map((r) => <option value={r} selected={r === p.role}>{t.roles[r]}</option>)}</select>
+                      <button class="btn btn--secondary btn--xs" type="submit">{t.common.save}</button></form>
+                    <form method="post"><Csrf /><input type="hidden" name="action" value={p.is_active ? 'deactivate' : 'activate'} /><input type="hidden" name="id" value={p.id} />
+                      <button class="btn btn--secondary btn--xs" type="submit">{p.is_active ? t.admin.users.deactivate : t.admin.users.activate}</button></form>
+                  </div>
+                )}</td>
+              )}
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  </div>
+</AppLayout>

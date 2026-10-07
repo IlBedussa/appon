@@ -1,0 +1,56 @@
+---
+// Mockup UI della timeline di una richiesta di manutenzione (illustrazione).
+import Icon from './Icon.astro';
+import T from './T.astro';
+import { t, type Locale } from '../i18n/config';
+interface Props { lang: Locale; current?: number }
+const { lang, current = 3 } = Astro.props;
+const d = t(lang);
+const m = d.mock.timeline;
+---
+<figure class="mock-tl">
+  <div class="tl-card">
+    <div class="tl-head">
+      <div>
+        <p class="tl-title"><Icon name="tool" /> {m.title}</p>
+        <p class="tl-id">{m.id}</p>
+      </div>
+      <span class="badge badge--soon">{m.status}</span>
+    </div>
+    <ol class="tl-list">
+      {m.steps.map((s, i) => (
+        <li class:list={['tl-step', i < current ? 'done' : i === current ? 'now' : 'todo']}>
+          <span class="tl-dot">{i < current ? <Icon name="check" /> : <span class="tl-num">{i + 1}</span>}</span>
+          <span class="tl-text">
+            <span class="tl-label">{s.label}</span>
+            <span class="tl-meta"><T text={s.meta} /></span>
+          </span>
+        </li>
+      ))}
+    </ol>
+  </div>
+  <figcaption>{d.ui.sample}</figcaption>
+</figure>
+<style>
+  .mock-tl { margin: 0; }
+  .tl-card { background: #fff; border: 1px solid var(--c-line); border-radius: var(--r-xl); box-shadow: var(--sh-md); padding: var(--sp-5); max-inline-size: 440px; margin-inline: auto; }
+  .tl-head { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--sp-3); margin-block-end: var(--sp-4); }
+  .tl-title { display: flex; align-items: center; gap: var(--sp-2); font-weight: 700; margin: 0; }
+  .tl-title :global(.icon) { color: var(--c-primary); }
+  .tl-id { margin: 0; color: var(--c-muted); font-size: var(--fs-sm); }
+  .tl-list { list-style: none; display: grid; }
+  .tl-step { position: relative; display: flex; gap: var(--sp-3); padding-block-end: var(--sp-4); }
+  .tl-step:not(:last-child)::before {
+    content: ''; position: absolute; inset-inline-start: 13px; inset-block: 28px 0; inline-size: 2px; background: var(--c-line);
+  }
+  .tl-step.done:not(:last-child)::before { background: var(--c-success); }
+  .tl-dot { flex: none; display: grid; place-items: center; inline-size: 28px; block-size: 28px; border-radius: 50%; border: 2px solid var(--c-line-strong); background: #fff; font-size: var(--fs-xs); font-weight: 700; color: var(--c-muted); }
+  .tl-dot :global(.icon) { inline-size: 16px; block-size: 16px; }
+  .done .tl-dot { background: var(--c-success); border-color: var(--c-success); color: #fff; }
+  .now .tl-dot { border-color: var(--c-primary); color: var(--c-primary); box-shadow: 0 0 0 4px var(--c-primary-100); }
+  .tl-text { display: grid; }
+  .tl-label { font-weight: 600; font-size: var(--fs-sm); }
+  .todo .tl-label { color: var(--c-muted); }
+  .tl-meta { font-size: var(--fs-xs); color: var(--c-muted); }
+  figcaption { text-align: center; font-size: var(--fs-xs); color: var(--c-muted); margin-block-start: var(--sp-3); }
+</style>

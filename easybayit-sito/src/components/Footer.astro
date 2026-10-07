@@ -1,0 +1,109 @@
+---
+import Logo from './Logo.astro';
+import T from './T.astro';
+import Icon from './Icon.astro';
+import { url, t, tx, navLabel, locales, langMeta, type Locale, type PageKey } from '../i18n/config';
+// `page`/`alternates`: per i link lingua (stessa pagina nelle altre lingue; articoli del blog con URL espliciti).
+interface Props { lang: Locale; page?: PageKey; alternates?: Partial<Record<Locale, string>> }
+const { lang, page = 'home', alternates } = Astro.props;
+const langHref = (l: Locale) => alternates?.[l] ?? url(l, page);
+const d = t(lang);
+const n = tx(lang).nav;
+const services: PageKey[] = ['owners', 'care', 'b2b', 'tenants', 'pricing', 'how'];
+const tools: PageKey[] = ['rent', 'yield', 'guide', 'legal', 'blog', 'cities', 'portal', 'demo', 'technology'];
+const company: PageKey[] = ['about', 'pledge', 'switching', 'call', 'faq', 'contact'];
+const label = (k: PageKey) => (k === 'owners' ? n.owners : k === 'pricing' ? n.pricing : navLabel(lang, k));
+const legal: PageKey[] = ['privacy', 'terms', 'accessibility'];
+const year = new Date().getFullYear();
+---
+<footer class="site-footer">
+  <div class="container">
+    <div class="site-footer__grid">
+      <div class="site-footer__brand">
+        <Logo light />
+        <p>{d.footer.tagline}</p>
+      </div>
+      <nav aria-label={n.groups.services}>
+        <h2>{n.groups.services}</h2>
+        <ul>{services.map((k) => <li><a href={url(lang, k)}>{label(k)}</a></li>)}</ul>
+      </nav>
+      <nav aria-label={d.footer.explore}>
+        <h2>{d.footer.explore}</h2>
+        <ul>{tools.map((k) => <li><a href={url(lang, k)}>{label(k)}</a></li>)}</ul>
+      </nav>
+      <nav aria-label={d.footer.company}>
+        <h2>{d.footer.company}</h2>
+        <ul>{company.map((k) => <li><a href={url(lang, k)}>{label(k)}</a></li>)}</ul>
+      </nav>
+      <div>
+        <h2>{d.footer.contactTitle}</h2>
+        <ul class="site-footer__contact">
+          <li><T text={d.footer.email} /></li>
+          <li><T text={d.footer.phone} /></li>
+          <li><T text={d.footer.hours} /></li>
+        </ul>
+      </div>
+    </div>
+    <div class="site-footer__bottom">
+      <div class="site-footer__legal-info">
+        <p>© {year} Easybayit. {d.footer.rights}</p>
+        <p><T text={d.footer.entity} /> · <T text={d.footer.license} /></p>
+      </div>
+      <nav aria-label={d.footer.legal}>
+        <ul class="site-footer__legal">{legal.map((k) => <li><a href={url(lang, k)}>{label(k)}</a></li>)}</ul>
+      </nav>
+      {/* Unica scelta manuale della lingua (l'header non ha selettore): discreta ma ben visibile, etichetta + icona,
+          nomi nativi, bersagli ≥44px, contrasto AA. Salvata nel cookie eb_lang (priorità sulla scelta automatica). */}
+      <nav class="site-footer__langs" aria-labelledby="footer-lang-label">
+        <span class="site-footer__langs-label" id="footer-lang-label"><Icon name="globe" /> {d.ui.language}</span>
+        <ul>
+          {locales.map((l) => (
+            <li>
+              <a href={langHref(l)} hreflang={l} lang={l} dir={langMeta[l].dir} data-eb-lang={l} aria-current={l === lang ? 'true' : undefined}>{langMeta[l].label}</a>
+            </li>
+          ))}
+        </ul>
+      </nav>
+    </div>
+  </div>
+</footer>
+<script>
+  // Ricorda la scelta manuale della lingua per 1 anno (letta dalla selezione automatica all'ingresso).
+  document.querySelectorAll<HTMLAnchorElement>('a[data-eb-lang]').forEach((a) => a.addEventListener('click', () => {
+    const secure = location.protocol === 'https:' ? '; Secure' : '';
+    document.cookie = `eb_lang=${a.dataset.ebLang}; Path=/; Max-Age=31536000; SameSite=Lax${secure}`;
+  }));
+</script>
+<style>
+  .site-footer { background: var(--c-dark); color: #b8c3d9; padding-block: var(--sp-8) var(--sp-5); font-size: var(--fs-sm); }
+  .site-footer a { color: #e6ebf5; text-decoration: none; }
+  .site-footer a:hover { color: #fff; text-decoration: underline; }
+  .site-footer h2 { font-size: var(--fs-sm); color: #fff; text-transform: uppercase; letter-spacing: .06em; margin-block-end: var(--sp-3); }
+  :lang(he) .site-footer h2 { letter-spacing: 0; }
+  .site-footer ul { list-style: none; display: grid; gap: var(--sp-2); }
+  .site-footer__grid { display: grid; gap: var(--sp-6); grid-template-columns: 1fr 1fr; }
+  .site-footer__brand { grid-column: 1 / -1; }
+  .site-footer__brand p { margin-block-start: var(--sp-4); max-inline-size: 34ch; }
+  .site-footer__contact { grid-column: auto; }
+  @media (min-width: 900px) {
+    .site-footer__grid { grid-template-columns: 1.5fr 1fr 1fr 0.8fr 1.3fr; }
+    .site-footer__brand { grid-column: auto; }
+  }
+  .site-footer__bottom {
+    display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--sp-4);
+    margin-block-start: var(--sp-7); padding-block-start: var(--sp-5); border-block-start: 1px solid rgb(255 255 255 / .12);
+  }
+  .site-footer__bottom p { margin: 0 0 var(--sp-1); }
+  .site-footer__legal { display: flex !important; flex-wrap: wrap; gap: var(--sp-4) !important; }
+  .site-footer__langs { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2) var(--sp-3); }
+  .site-footer__langs-label { display: inline-flex; align-items: center; gap: 8px; color: #b8c3d9; font-size: var(--fs-sm); font-weight: 600; }
+  .site-footer__langs-label :global(.icon) { inline-size: 20px; block-size: 20px; color: var(--c-accent); flex: none; }
+  .site-footer__langs ul { display: flex !important; flex-wrap: wrap; align-items: center; gap: var(--sp-1) !important; font-size: var(--fs-sm); }
+  /* Bersagli ≥ 44×44 px; testo #e6ebf5 su #0b1324 ≈ 15:1 (AA ampiamente superato). */
+  .site-footer__langs a { display: inline-flex; align-items: center; justify-content: center; min-block-size: 44px; min-inline-size: 44px; padding: 0 14px; border-radius: var(--r-pill); border: 1px solid transparent; color: #e6ebf5; }
+  .site-footer__langs a:hover { background: rgb(255 255 255 / .08); text-decoration: none; }
+  .site-footer__langs a:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+  /* Mobile: spazio sotto la riga per il pulsante flottante della chat (non copre i link a fine pagina). */
+  @media (max-width: 899px) { .site-footer__langs { padding-block-end: 64px; } }
+  .site-footer__langs a[aria-current='true'] { color: #fff; font-weight: 700; background: rgb(255 255 255 / .1); border-color: rgb(255 255 255 / .28); }
+</style>

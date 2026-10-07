@@ -1,0 +1,566 @@
+---
+// "Drive di gestione" interattivo (esempio). Componente riutilizzabile: riceve un DriveModel
+// (cartelle, sottocartelle, file con registro attività) e i testi; nessun dato è cablato qui.
+// - Senza JS: tutte le cartelle restano visibili in sequenza e ogni file è un link al PDF/immagine.
+// - Con JS: navigazione a cartelle, ricerca, vista elenco/griglia, anteprima in <dialog> con
+//   pagine, dettagli, motivo della scelta (preventivi) e registro attività; ← → Esc da tastiera.
+// - Link diretti: #drive=<cartella>&file=<id> (usati anche per gli screenshot).
+import { statSync } from 'node:fs';
+import { join } from 'node:path';
+import TIcon from './TIcon.astro';
+import T from '../T.astro';
+import { DRIVE_FOLDERS, driveAssets, type DriveModel, type DriveFile } from '../../lib/trust/drive-model';
+import { tt, langMeta, type Locale } from '../../i18n/config';
+interface Props { lang: Locale; model: DriveModel; id?: string }
+const { lang, model, id = 'drive' } = Astro.props;
+const x = tt(lang);
+const d = x.drive;
+const intl = langMeta[lang].intl;
+const TZ = 'Asia/Jerusalem';
+const fmtDate = (iso: string) => new Intl.DateTimeFormat(intl, { day: 'numeric', month: 'short', year: 'numeric', timeZone: TZ }).format(new Date(iso.length === 10 ? iso + 'T12:00:00+03:00' : iso));
+const fmtDateTime = (iso: string) => new Intl.DateTimeFormat(intl, { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: TZ }).format(new Date(iso));
+const fmtShort = (iso: string) => new Intl.DateTimeFormat(intl, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: TZ }).format(new Date(iso));
+const nf = new Intl.NumberFormat(intl, { maximumFractionDigits: 0 });
+const ils = (v: number) => new Intl.NumberFormat(intl, { style: 'currency', currency: 'ILS', currencyDisplay: 'narrowSymbol', maximumFractionDigits: 0 }).format(v);
+const fill = (s: string, v: Record<string, string | number>) => s.replace(/\{(\w+)\}/g, (_, k) => String(v[k] ?? ''));
+const size = (p: string) => { try { return statSync(join(process.cwd(), 'public', p)).size; } catch { return null; } };
+const fmtSize = (b: number | null) => (b == null ? '—' : b < 1024 * 1024 ? `${nf.format(Math.max(1, Math.round(b / 1024)))} KB` : `${new Intl.NumberFormat(intl, { maximumFractionDigits: 1 }).format(b / 1048576)} MB`);
+const actText = (a: DriveFile['activity'][number]) => fill(d.actions[a.action], { who: d.who[a.who] });
+
+const files = model.files.map((f) => {
+  const a = driveAssets(f, lang);
+  const acts = [...f.activity].sort((p, q) => Date.parse(p.at) - Date.parse(q.at));
+  const last = acts[acts.length - 1];
+  const name = (d.files as Record<string, string>)[f.id] ?? f.id;
+  return {
+    ...f, name, assets: a, bytes: size(a.file),
+    last: last ? `${actText(last)} · ${fmtShort(last.at)}` : '',
+    acts: acts.map((e) => ({ text: actText(e), at: fmtDateTime(e.at), action: e.action, who: e.who })),
+    why: (d.chosenWhy as Record<string, string>)[f.id] ?? '',
+  };
+});
+type F = (typeof files)[number];
+const rootOf = (folder: string) => model.subfolders.find((s) => s.id === folder)?.parent ?? folder;
+const inFolder = (fid: string) => files.filter((f) => f.folder === fid);
+const deepCount = (fid: string) => files.filter((f) => rootOf(f.folder) === fid).length + model.subfolders.filter((s) => s.parent === fid).length;
+const folderName = (fid: string) => (d.folders as Record<string, string>)[fid] ?? (d.sub as Record<string, string>)[model.subfolders.find((s) => s.id === fid)?.titleKey ?? ''] ?? fid;
+const tone = (fid: string) => DRIVE_FOLDERS.find((f) => f.id === rootOf(fid))?.tone ?? '#1a4fd6';
+const panels = [...DRIVE_FOLDERS.map((f) => f.id as string), ...model.subfolders.map((s) => s.id)];
+
+// Dati per l'anteprima (client)
+const client = files.map((f) => ({
+  id: f.id, name: f.name, kind: f.kind, folder: f.folder, file: f.assets.file, pages: f.assets.pages, size: fmtSize(f.bytes),
+  date: f.kind === 'image' ? fmtDateTime(f.date) : fmtDate(f.date), dateLabel: f.kind === 'image' ? d.taken : d.docDate,
+  lang: f.localized ? d.localized : f.original ? d.originals[f.original] : '', chosen: !!f.chosen, why: f.why,
+  amount: f.amountIls != null ? ils(f.amountIls) : '', acts: f.acts,
+}));
+const ui = {
+  page: d.page, pages: d.pages, chosen: d.chosen, type: d.type, typePdf: d.typePdf, typeImage: d.typeImage, size: d.colSize, original: d.original,
+  amount: d.amount, folder: d.folder, results: d.results, items: d.items, folderNames: Object.fromEntries(panels.map((p) => [p, folderName(p)])), root: d.root,
+  parents: Object.fromEntries(model.subfolders.map((s) => [s.id, s.parent])),
+};
+const fileIcon = (f: F) => (f.kind === 'image' ? 'image' : 'file');
+---
+<div class="drive" id={id} data-drive data-ui={JSON.stringify(ui)} data-files={JSON.stringify(client)} data-view="list">
+  <!-- Barra applicazione -->
+  <div class="drive__bar">
+    <div class="drive__brand">
+      <span class="drive__logo" aria-hidden="true"><TIcon name="folderOpen" /></span>
+      <div class="drive__title">
+        <p class="drive__app">{d.appName}</p>
+        <p class="drive__prop"><TIcon name="home" /> <span>{d.property}</span></p>
+      </div>
+      <span class="drive__ex" title={x.common.fictional}>{x.common.example}</span>
+    </div>
+    <div class="drive__tools">
+      <label class="drive__search">
+        <span class="visually-hidden">{d.search}</span>
+        <TIcon name="search" />
+        <input type="search" placeholder={d.searchPh} data-search autocomplete="off" />
+      </label>
+      <div class="drive__views" role="group" aria-label={`${d.viewList} / ${d.viewGrid}`}>
+        <button type="button" data-view-btn="list" aria-pressed="true" title={d.viewList}><TIcon name="list" /><span class="visually-hidden">{d.viewList}</span></button>
+        <button type="button" data-view-btn="grid" aria-pressed="false" title={d.viewGrid}><TIcon name="grid" /><span class="visually-hidden">{d.viewGrid}</span></button>
+      </div>
+    </div>
+  </div>
+
+  <div class="drive__body">
+    <!-- Barra laterale cartelle -->
+    <nav class="drive__side" aria-label={d.appName}>
+      <ul>
+        <li><button type="button" data-go="root" aria-current="true"><TIcon name="grid" /> <span>{d.root}</span></button></li>
+        {DRIVE_FOLDERS.map((f) => (
+          <li>
+            <button type="button" data-go={f.id} style={`--tone:${f.tone}`}>
+              <span class="drive__fi"><TIcon name="folder" /></span>
+              <span class="drive__fname">{folderName(f.id)}</span>
+              <span class="drive__count tnum">{deepCount(f.id)}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+      <p class="drive__mirror"><TIcon name="info" /> {d.mirror}</p>
+    </nav>
+
+    <div class="drive__main">
+      <div class="drive__crumbs" aria-live="polite">
+        <button type="button" data-go="root" class="drive__crumb">{d.root}</button>
+        <span data-crumbs></span>
+        <span class="drive__meta" data-meta></span>
+      </div>
+
+      <!-- Radice: schede delle cartelle -->
+      <section class="drive__panel" data-panel="root" aria-label={d.root}>
+        <ul class="drive__folders">
+          {DRIVE_FOLDERS.map((f) => (
+            <li>
+              <a href={`#drive=${f.id}`} data-go={f.id} class="drive__fcard" style={`--tone:${f.tone}`} aria-label={fill(d.openFolder, { name: folderName(f.id) })}>
+                <span class="drive__fcard-ic"><TIcon name={f.icon} /></span>
+                <span class="drive__fcard-name">{folderName(f.id)}</span>
+                <span class="drive__fcard-hint">{(d.folderHints as Record<string, string>)[f.id]}</span>
+                <span class="drive__fcard-n tnum">{fill(d.items, { n: deepCount(f.id) })}</span>
+              </a>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      <!-- Una sezione per cartella (e sottocartella) -->
+      {panels.map((pid) => {
+        const subs = model.subfolders.filter((s) => s.parent === pid);
+        const list = inFolder(pid);
+        return (
+          <section class="drive__panel" data-panel={pid} aria-label={folderName(pid)} style={`--tone:${tone(pid)}`}>
+            <h3 class="drive__nojs-title">{folderName(pid)}</h3>
+            {pid === 'quotes' && <p class="drive__note"><TIcon name="info" /> {d.quotesNote}</p>}
+            {subs.length > 0 && (
+              <ul class="drive__subs">
+                {subs.map((s) => {
+                  const q = inFolder(s.id);
+                  const ch = q.find((f) => f.chosen);
+                  return (
+                    <li>
+                      <a href={`#drive=${s.id}`} data-go={s.id} class="drive__sub" aria-label={fill(d.openFolder, { name: folderName(s.id) })}>
+                        <span class="drive__fi"><TIcon name="folder" /></span>
+                        <span class="drive__sub-name">{folderName(s.id)}</span>
+                        <span class="drive__sub-quotes">
+                          {q.map((f) => <span class:list={['drive__qchip tnum', { 'is-chosen': f.chosen }]}>{f.chosen && <TIcon name="check" />}{ils(f.amountIls ?? 0)}</span>)}
+                        </span>
+                        {ch && <span class="drive__sub-n">{fill(d.items, { n: q.length })}</span>}
+                      </a>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+            {list.length > 0 && (
+              <div class="drive__table" role="table" aria-label={folderName(pid)}>
+                <div class="drive__row drive__row--head" role="row">
+                  <span role="columnheader">{d.colName}</span>
+                  <span role="columnheader">{d.colModified}</span>
+                  <span role="columnheader">{d.colSize}</span>
+                  <span role="columnheader">{d.colActivity}</span>
+                </div>
+                {list.map((f) => (
+                  <a class:list={['drive__row drive__file', { 'is-chosen': f.chosen }]} role="row" href={f.assets.file} data-file={f.id} target="_blank" rel="noopener" aria-label={fill(d.openFile, { name: f.name })} data-name={f.name.toLowerCase()}>
+                    <span role="cell" class="drive__cell-name">
+                      <span class:list={['drive__thumb', `drive__thumb--${f.kind}`]}>
+                        <img src={f.assets.thumb} alt="" loading="lazy" decoding="async" width="120" height={f.kind === 'image' ? 90 : 170} />
+                        <span class="drive__ticon"><TIcon name={fileIcon(f)} /></span>
+                      </span>
+                      <span class="drive__nm">
+                        <bdi class="drive__nm-text">{f.name}</bdi>
+                        <span class="drive__tags">
+                          {f.chosen && <span class="drive__chosen"><TIcon name="checkCircle" /> {d.chosen}</span>}
+                          {f.amountIls != null && <span class="drive__amt tnum">{ils(f.amountIls)}</span>}
+                          {f.localized && <span class="drive__lang"><TIcon name="lang" /> {langMeta[lang].short}</span>}
+                        </span>
+                      </span>
+                    </span>
+                    <span role="cell" class="drive__cell tnum">{f.kind === 'image' ? fmtShort(f.date) : fmtDate(f.date)}</span>
+                    <span role="cell" class="drive__cell tnum">{fmtSize(f.bytes)}</span>
+                    <span role="cell" class="drive__cell drive__cell-act"><TIcon name="history" /> <span>{f.last}</span></span>
+                  </a>
+                ))}
+              </div>
+            )}
+          </section>
+        );
+      })}
+
+      <!-- Risultati di ricerca (riempiti dal JS) -->
+      <section class="drive__panel" data-panel="search" hidden>
+        <div class="drive__table" data-results></div>
+        <p class="drive__empty" data-noresults hidden><TIcon name="search" /> {d.noResults}</p>
+      </section>
+    </div>
+  </div>
+  <p class="drive__foot"><TIcon name="shield" /> <span>{x.common.fictional} {d.watermark}</span> <span class="drive__kbd">{d.keyboard}</span></p>
+
+  <!-- Anteprima -->
+  <dialog class="dv" data-dialog aria-labelledby={`${id}-dv-title`}>
+    <div class="dv__inner">
+      <header class="dv__head">
+        <span class="dv__ic" data-dv-icon><TIcon name="file" /></span>
+        <h3 class="dv__title" id={`${id}-dv-title`}><bdi data-dv-name></bdi></h3>
+        <span class="drive__ex">{x.common.example}</span>
+        <div class="dv__nav">
+          <button type="button" class="dv__btn" data-dv-prev aria-label={x.common.prev}><TIcon name="chevron" class="dv__flip" /></button>
+          <span class="dv__pos tnum" dir="ltr" data-dv-pos></span>
+          <button type="button" class="dv__btn" data-dv-next aria-label={x.common.next}><TIcon name="chevron" /></button>
+          <button type="button" class="dv__btn dv__close" data-dv-close aria-label={d.closePreview}><TIcon name="close" /></button>
+        </div>
+      </header>
+      <div class="dv__body">
+        <div class="dv__stage" data-dv-stage tabindex="0" aria-label={d.preview}></div>
+        <aside class="dv__panel">
+          <div class="dv__chosen" data-dv-chosen hidden>
+            <p class="dv__chosen-h"><TIcon name="checkCircle" /> {d.chosen}</p>
+            <p data-dv-why></p>
+          </div>
+          <h4>{d.details}</h4>
+          <dl class="dv__dl" data-dv-details></dl>
+          <a class="btn btn--primary btn--sm dv__dl-btn" data-dv-download href="#" download><TIcon name="download" /> <span data-dv-dltext>{x.common.downloadPdf}</span></a>
+          <h4>{d.activity}</h4>
+          <ol class="dv__acts" data-dv-acts></ol>
+        </aside>
+      </div>
+    </div>
+  </dialog>
+</div>
+
+<script>
+  type Act = { text: string; at: string; action: string; who: string };
+  type DF = { id: string; name: string; kind: 'pdf' | 'image'; folder: string; file: string; pages: string[]; size: string; date: string; dateLabel: string; lang: string; chosen: boolean; why: string; amount: string; acts: Act[] };
+  document.querySelectorAll<HTMLElement>('[data-drive]').forEach((root) => {
+    const ui = JSON.parse(root.dataset.ui!);
+    const files: DF[] = JSON.parse(root.dataset.files!);
+    const byId = new Map(files.map((f) => [f.id, f]));
+    const fill = (s: string, v: Record<string, string | number>) => s.replace(/\{(\w+)\}/g, (_, k) => String(v[k] ?? ''));
+    const panels = [...root.querySelectorAll<HTMLElement>('[data-panel]')];
+    const crumbs = root.querySelector<HTMLElement>('[data-crumbs]')!;
+    const meta = root.querySelector<HTMLElement>('[data-meta]')!;
+    const search = root.querySelector<HTMLInputElement>('[data-search]')!;
+    const results = root.querySelector<HTMLElement>('[data-results]')!;
+    const noRes = root.querySelector<HTMLElement>('[data-noresults]')!;
+    let current = 'root';
+    let visible: string[] = []; // id dei file nella vista corrente (per ← →)
+    root.classList.add('drive--js');
+
+    const rowsIn = (p: HTMLElement) => [...p.querySelectorAll<HTMLElement>('[data-file]')].map((r) => r.dataset.file!);
+    const show = (pid: string, push = true) => {
+      current = pid;
+      panels.forEach((p) => (p.hidden = p.dataset.panel !== pid));
+      const top = ui.parents[pid] ?? pid;
+      root.querySelectorAll<HTMLButtonElement>('.drive__side [data-go]').forEach((b) => b.setAttribute('aria-current', String(b.dataset.go === top)));
+      crumbs.replaceChildren();
+      const chain = pid === 'root' || pid === 'search' ? [] : ui.parents[pid] ? [ui.parents[pid], pid] : [pid];
+      chain.forEach((c: string, i: number) => {
+        const sep = document.createElement('span'); sep.className = 'drive__sep'; sep.textContent = '›'; sep.setAttribute('aria-hidden', 'true');
+        const el = document.createElement(i < chain.length - 1 ? 'button' : 'strong');
+        el.textContent = ui.folderNames[c];
+        if (el instanceof HTMLButtonElement) { el.type = 'button'; el.className = 'drive__crumb'; el.addEventListener('click', () => show(c)); }
+        crumbs.append(sep, el);
+      });
+      const panel = panels.find((p) => p.dataset.panel === pid);
+      visible = panel ? rowsIn(panel) : [];
+      const n = panel ? panel.querySelectorAll('[data-file], .drive__sub').length : 0;
+      meta.textContent = pid === 'root' || pid === 'search' ? '' : fill(ui.items, { n });
+      if (push && pid !== 'search') history.replaceState(null, '', pid === 'root' ? location.pathname + location.search : `#drive=${pid}`);
+    };
+
+    root.addEventListener('click', (e) => {
+      const go = (e.target as HTMLElement).closest<HTMLElement>('[data-go]');
+      if (go) { e.preventDefault(); search.value = ''; show(go.dataset.go!); root.querySelector('.drive__main')?.scrollTo?.({ top: 0 }); return; }
+      const row = (e.target as HTMLElement).closest<HTMLAnchorElement>('[data-file]');
+      if (row && !(e as MouseEvent).metaKey && !(e as MouseEvent).ctrlKey) { e.preventDefault(); open(row.dataset.file!); }
+    });
+
+    // Vista elenco / griglia
+    root.querySelectorAll<HTMLButtonElement>('[data-view-btn]').forEach((b) => b.addEventListener('click', () => {
+      root.dataset.view = b.dataset.viewBtn!;
+      root.querySelectorAll('[data-view-btn]').forEach((o) => o.setAttribute('aria-pressed', String(o === b)));
+    }));
+
+    // Ricerca su tutti i file
+    let before = 'root';
+    search.addEventListener('input', () => {
+      const q = search.value.trim().toLowerCase();
+      if (!q) { show(before === 'search' ? 'root' : before); return; }
+      if (current !== 'search') before = current;
+      results.replaceChildren();
+      const hits = [...root.querySelectorAll<HTMLElement>('[data-panel]:not([data-panel=search]) [data-file]')].filter((r) => r.dataset.name!.includes(q));
+      hits.forEach((r) => results.append(r.cloneNode(true)));
+      noRes.hidden = hits.length > 0;
+      show('search', false);
+      visible = hits.map((h) => h.dataset.file!);
+      meta.textContent = fill(ui.results, { n: hits.length, q: search.value.trim() });
+    });
+
+    // ---- Anteprima ----
+    const dlg = root.querySelector<HTMLDialogElement>('[data-dialog]')!;
+    const $ = <T extends HTMLElement>(s: string) => dlg.querySelector<T>(s)!;
+    let openId = '';
+    const open = (fid: string) => {
+      const f = byId.get(fid); if (!f) return;
+      openId = fid;
+      $('[data-dv-name]').textContent = f.name;
+      $('[data-dv-icon]').dataset.kind = f.kind;
+      const stage = $('[data-dv-stage]');
+      stage.replaceChildren();
+      stage.dataset.kind = f.kind;
+      f.pages.forEach((src, i) => {
+        const fig = document.createElement('figure');
+        const img = document.createElement('img');
+        img.src = src; img.alt = f.pages.length > 1 ? `${f.name} — ${fill(ui.page, { n: i + 1, t: f.pages.length })}` : f.name; img.decoding = 'async';
+        fig.append(img);
+        if (f.pages.length > 1) { const c = document.createElement('figcaption'); c.textContent = fill(ui.page, { n: i + 1, t: f.pages.length }); fig.append(c); }
+        stage.append(fig);
+      });
+      stage.scrollTop = 0;
+      const ch = $('[data-dv-chosen]'); ch.hidden = !f.chosen; $('[data-dv-why]').textContent = f.why;
+      const dl = $('[data-dv-details]'); dl.replaceChildren();
+      const rows: [string, string][] = [[ui.type, f.kind === 'image' ? ui.typeImage : ui.typePdf + (f.pages.length > 1 ? ` · ${fill(ui.pages, { n: f.pages.length })}` : '')], [f.dateLabel, f.date], [ui.size, f.size]];
+      if (f.amount) rows.push([ui.amount, f.amount]);
+      if (f.lang) rows.push([ui.original, f.lang]);
+      rows.push([ui.folder, ui.folderNames[f.folder]]);
+      rows.forEach(([k, v]) => { const dt = document.createElement('dt'); dt.textContent = k; const dd = document.createElement('dd'); dd.textContent = v; dl.append(dt, dd); });
+      const a = $<HTMLAnchorElement>('[data-dv-download]'); a.href = f.file; a.setAttribute('download', f.name);
+      const acts = $('[data-dv-acts]'); acts.replaceChildren();
+      f.acts.forEach((ev) => {
+        const li = document.createElement('li'); li.dataset.action = ev.action;
+        const b = document.createElement('span'); b.className = 'dv__act-t'; b.textContent = ev.text;
+        const t = document.createElement('time'); t.textContent = ev.at;
+        li.append(b, t); acts.append(li);
+      });
+      const list = visible.length ? visible : [fid];
+      const i = list.indexOf(fid);
+      $('[data-dv-pos]').textContent = i >= 0 ? `${i + 1} / ${list.length}` : '';
+      $<HTMLButtonElement>('[data-dv-prev]').disabled = i <= 0;
+      $<HTMLButtonElement>('[data-dv-next]').disabled = i < 0 || i >= list.length - 1;
+      if (!dlg.open) dlg.showModal();
+      history.replaceState(null, '', `#drive=${f.folder}&file=${fid}`);
+    };
+    const step = (dir: number) => { const i = visible.indexOf(openId); const n = visible[i + dir]; if (n) open(n); };
+    const close = () => { dlg.close(); };
+    dlg.addEventListener('close', () => { history.replaceState(null, '', current === 'root' || current === 'search' ? location.pathname : `#drive=${current}`); root.querySelector<HTMLElement>(`[data-panel="${current}"] [data-file="${openId}"]`)?.focus(); });
+    $('[data-dv-close]').addEventListener('click', close);
+    $('[data-dv-prev]').addEventListener('click', () => step(document.documentElement.dir === 'rtl' ? -1 : -1));
+    $('[data-dv-next]').addEventListener('click', () => step(1));
+    dlg.addEventListener('click', (e) => { if (e.target === dlg) close(); });
+    dlg.addEventListener('keydown', (e) => {
+      const rtl = document.documentElement.dir === 'rtl';
+      if (e.key === 'ArrowRight') { e.preventDefault(); step(rtl ? -1 : 1); }
+      if (e.key === 'ArrowLeft') { e.preventDefault(); step(rtl ? 1 : -1); }
+    });
+
+    // Stato iniziale da hash (#drive=cartella&file=id)
+    const h = new URLSearchParams(location.hash.slice(1));
+    const start = h.get('drive');
+    show(start && panels.some((p) => p.dataset.panel === start) ? start : 'root', false);
+    if (h.get('file')) open(h.get('file')!);
+  });
+</script>
+
+<style>
+  .drive {
+    --tone: var(--c-primary);
+    position: relative; border: 1px solid var(--c-line); border-radius: var(--r-xl); background: #fff;
+    box-shadow: 0 30px 60px -20px rgb(11 19 36 / .25), 0 12px 24px -12px rgb(11 19 36 / .12); overflow: hidden;
+  }
+  .drive :global(.icon) { inline-size: 1.15em; block-size: 1.15em; }
+  /* Barra */
+  .drive__bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--sp-3) var(--sp-5); padding: var(--sp-3) var(--sp-5);
+    background: linear-gradient(180deg, #fbfcfe, #f3f6fb); border-block-end: 1px solid var(--c-line); }
+  .drive__brand { display: flex; align-items: center; gap: var(--sp-3); min-inline-size: 0; }
+  .drive__logo { display: grid; place-items: center; inline-size: 40px; block-size: 40px; border-radius: 12px; color: #fff;
+    background: linear-gradient(135deg, var(--c-primary), #3b2fd0); box-shadow: 0 6px 14px -6px rgb(26 79 214 / .7); flex: none; }
+  .drive__logo :global(.icon) { inline-size: 22px; block-size: 22px; }
+  .drive__title { min-inline-size: 0; }
+  .drive__app { margin: 0; font-weight: 700; font-size: var(--fs-md); line-height: 1.2; color: var(--c-ink); }
+  .drive__prop { margin: 0; display: flex; align-items: center; gap: 6px; font-size: var(--fs-xs); color: var(--c-muted); }
+  .drive__prop span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .drive__ex { flex: none; font-size: 11px; font-weight: 800; letter-spacing: .08em; color: #b45309; background: #fff7ed; border: 1px solid #fed7aa; border-radius: 999px; padding: 2px 10px; }
+  :lang(he) .drive__ex { letter-spacing: 0; }
+  .drive__tools { display: flex; align-items: center; gap: var(--sp-2); flex: 1 1 280px; justify-content: flex-end; }
+  .drive__search { position: relative; flex: 1 1 auto; max-inline-size: 340px; display: flex; align-items: center; }
+  .drive__search :global(.icon) { position: absolute; inset-inline-start: 12px; color: var(--c-muted); pointer-events: none; }
+  .drive__search input { inline-size: 100%; font: inherit; font-size: var(--fs-sm); padding: 9px 14px; padding-inline-start: 38px; border-radius: 999px; border: 1px solid var(--c-line-strong); background: #fff; color: var(--c-ink); }
+  .drive__search input:focus-visible { outline: 3px solid var(--c-primary-100); border-color: var(--c-primary); }
+  .drive__views { display: flex; padding: 3px; gap: 2px; border-radius: 999px; background: var(--c-surface-2); flex: none; }
+  .drive__views button { display: grid; place-items: center; inline-size: 36px; block-size: 32px; border: 0; border-radius: 999px; background: transparent; color: var(--c-muted); cursor: pointer; }
+  .drive__views button[aria-pressed='true'] { background: #fff; color: var(--c-primary); box-shadow: var(--sh-sm); }
+  .drive__views button:focus-visible { outline: 3px solid var(--c-primary-100); }
+  /* Corpo */
+  .drive__body { display: grid; grid-template-columns: minmax(0, 1fr); min-block-size: 520px; }
+  @media (min-width: 900px) { .drive__body { grid-template-columns: 270px minmax(0, 1fr); } }
+  .drive__side { min-inline-size: 0; }
+  .drive :global([hidden]), .dv :global([hidden]) { display: none !important; }
+  .drive__side { border-block-end: 1px solid var(--c-line); background: #fbfcfe; padding: var(--sp-3); }
+  @media (min-width: 900px) { .drive__side { border-block-end: 0; border-inline-end: 1px solid var(--c-line); padding: var(--sp-4) var(--sp-3); } }
+  .drive__side ul { list-style: none; margin: 0; padding: 0; display: flex; gap: 6px; overflow-x: auto; scrollbar-width: thin; padding-block-end: 2px; }
+  @media (min-width: 900px) { .drive__side ul { flex-direction: column; overflow: visible; gap: 2px; } }
+  .drive__side button { display: flex; align-items: center; gap: 10px; inline-size: 100%; font: inherit; font-size: var(--fs-sm); font-weight: 500; color: var(--c-ink-2);
+    background: transparent; border: 1px solid transparent; border-radius: 10px; padding: 8px 10px; cursor: pointer; text-align: start; white-space: nowrap; }
+  @media (max-width: 899px) { .drive__side button { border-color: var(--c-line); background: #fff; border-radius: 999px; padding: 6px 12px; } }
+  .drive__side button:hover { background: var(--c-surface-2); }
+  .drive__side button[aria-current='true'] { background: var(--c-primary-50); color: var(--c-primary-700); font-weight: 700; border-color: var(--c-primary-100); }
+  .drive__side button:focus-visible { outline: 3px solid var(--c-primary-100); }
+  .drive__fi { color: var(--tone); display: inline-flex; }
+  .drive__fi :global(.icon) { fill: color-mix(in srgb, var(--tone) 18%, transparent); }
+  .drive__fname { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+  .drive__count { font-size: 12px; color: var(--c-muted); background: var(--c-surface-2); border-radius: 999px; padding: 0 8px; min-inline-size: 24px; text-align: center; }
+  .drive__mirror { display: none; }
+  @media (min-width: 900px) { .drive__mirror { display: flex; gap: 6px; font-size: 12px; color: var(--c-muted); margin: var(--sp-5) var(--sp-2) 0; line-height: 1.45; } .drive__mirror :global(.icon) { flex: none; margin-block-start: 2px; } }
+  .drive__main { min-inline-size: 0; padding: var(--sp-4) var(--sp-4) var(--sp-5); }
+  @media (min-width: 900px) { .drive__main { padding: var(--sp-4) var(--sp-5) var(--sp-5); } }
+  .drive__crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-block-size: 36px; margin-block-end: var(--sp-3); font-size: var(--fs-sm); }
+  .drive__crumbs :global(.drive__crumb) { font: inherit; color: var(--c-muted); background: none; border: 0; padding: 4px 6px; border-radius: 6px; cursor: pointer; }
+  .drive__crumbs :global(.drive__crumb:hover) { background: var(--c-surface-2); color: var(--c-ink); }
+  .drive__crumbs :global(strong) { color: var(--c-ink); padding: 4px 2px; }
+  .drive__crumbs :global(.drive__sep) { color: var(--c-line-strong); }
+  .drive__meta { margin-inline-start: auto; color: var(--c-muted); font-size: var(--fs-xs); }
+  .drive:not(.drive--js) .drive__crumbs, .drive:not(.drive--js) .drive__tools { display: none; }
+  .drive__nojs-title { display: none; }
+  .drive:not(.drive--js) .drive__nojs-title { display: block; font-size: var(--fs-md); margin: var(--sp-5) 0 var(--sp-2); }
+  .drive:not(.drive--js) [data-panel='search'] { display: none; }
+  /* Schede cartelle */
+  .drive__folders { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--sp-3); grid-template-columns: repeat(auto-fill, minmax(min(148px, 100%), 1fr)); }
+  @media (min-width: 900px) { .drive__folders { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); } }
+  .drive__fcard { position: relative; display: grid; gap: 4px; block-size: 100%; padding: var(--sp-4); border-radius: 16px; text-decoration: none; color: inherit;
+    background: linear-gradient(160deg, color-mix(in srgb, var(--tone) 7%, #fff), #fff 70%); border: 1px solid color-mix(in srgb, var(--tone) 18%, var(--c-line));
+    transition: transform .18s ease, box-shadow .18s ease, border-color .18s; }
+  .drive__fcard:hover { transform: translateY(-2px); box-shadow: 0 14px 28px -14px color-mix(in srgb, var(--tone) 55%, transparent); border-color: color-mix(in srgb, var(--tone) 45%, #fff); }
+  .drive__fcard:focus-visible { outline: 3px solid var(--c-primary-100); outline-offset: 2px; }
+  .drive__fcard-ic { display: grid; place-items: center; inline-size: 42px; block-size: 42px; border-radius: 12px; background: var(--tone); color: #fff; margin-block-end: var(--sp-2);
+    box-shadow: 0 8px 16px -8px var(--tone); }
+  .drive__fcard-name { font-weight: 700; color: var(--c-ink); line-height: 1.3; }
+  .drive__fcard-hint { font-size: var(--fs-xs); color: var(--c-muted); line-height: 1.4; }
+  .drive__fcard-n { font-size: 12px; font-weight: 600; color: color-mix(in srgb, var(--tone) 80%, #000); margin-block-start: var(--sp-2); }
+  /* Sottocartelle (lavori con 3 preventivi) */
+  .drive__note { display: flex; gap: 8px; align-items: center; font-size: var(--fs-sm); color: var(--c-ink-2); background: color-mix(in srgb, var(--tone) 7%, #fff); border: 1px dashed color-mix(in srgb, var(--tone) 35%, #fff); border-radius: 12px; padding: 10px 14px; margin: 0 0 var(--sp-3); }
+  .drive__note :global(.icon) { color: var(--tone); flex: none; }
+  .drive__subs { list-style: none; margin: 0 0 var(--sp-3); padding: 0; display: grid; gap: var(--sp-2); }
+  .drive__sub { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2) var(--sp-3); padding: 12px 14px; border: 1px solid var(--c-line); border-radius: 12px; text-decoration: none; color: inherit; background: #fff; transition: background .15s, border-color .15s; }
+  .drive__sub:hover { background: var(--c-surface); border-color: var(--c-line-strong); }
+  .drive__sub:focus-visible { outline: 3px solid var(--c-primary-100); }
+  .drive__sub-name { font-weight: 600; flex: 1 1 200px; }
+  .drive__sub-quotes { display: flex; gap: 6px; flex-wrap: wrap; }
+  .drive__qchip { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; padding: 3px 9px; border-radius: 999px; background: var(--c-surface-2); color: var(--c-ink-2); direction: ltr; }
+  .drive__qchip.is-chosen { background: var(--c-success-50); color: var(--c-success); box-shadow: inset 0 0 0 1px #bbf7d0; }
+  .drive__qchip :global(.icon) { inline-size: 12px; block-size: 12px; }
+  .drive__sub-n { font-size: 12px; color: var(--c-muted); }
+  /* Tabella file */
+  .drive__table { display: grid; }
+  .drive__row { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px var(--sp-4); align-items: center; padding: 10px 12px; border-radius: 12px; text-decoration: none; color: inherit; }
+  @media (min-width: 1100px) { .drive__row { grid-template-columns: minmax(0, 2.4fr) 110px 80px minmax(0, 1.6fr); } }
+  .drive__row--head { display: none; font-size: 12px; font-weight: 600; color: var(--c-muted); text-transform: uppercase; letter-spacing: .05em; padding-block: 6px; border-block-end: 1px solid var(--c-line); border-radius: 0; margin-block-end: 4px; }
+  :lang(he) .drive__row--head { letter-spacing: 0; }
+  @media (min-width: 1100px) { .drive__row--head { display: grid; } }
+  .drive__file { position: relative; transition: background .12s; }
+  .drive__file + .drive__file { box-shadow: 0 -1px 0 var(--c-line); }
+  .drive__file:hover { background: var(--c-primary-50); box-shadow: none; }
+  .drive__file:hover + .drive__file { box-shadow: none; }
+  .drive__file:focus-visible { outline: 3px solid var(--c-primary-100); outline-offset: -1px; }
+  .drive__file.is-chosen { background: linear-gradient(90deg, var(--c-success-50), #fff 85%); box-shadow: inset 3px 0 0 var(--c-success); }
+  :global([dir='rtl']) .drive__file.is-chosen { background: linear-gradient(-90deg, var(--c-success-50), #fff 85%); box-shadow: inset -3px 0 0 var(--c-success); }
+  .drive__cell-name { display: flex; align-items: center; gap: var(--sp-3); min-inline-size: 0; }
+  .drive__thumb { position: relative; flex: none; inline-size: 36px; block-size: 46px; border-radius: 6px; overflow: hidden; background: var(--c-surface-2); border: 1px solid var(--c-line); }
+  .drive__thumb--image { inline-size: 46px; block-size: 36px; }
+  .drive__thumb img { inline-size: 100%; block-size: 100%; object-fit: cover; object-position: top; display: block; }
+  .drive__ticon { position: absolute; inset-block-end: 2px; inset-inline-end: 2px; display: grid; place-items: center; inline-size: 16px; block-size: 16px; border-radius: 4px; background: #e11d48; color: #fff; }
+  .drive__thumb--image .drive__ticon { background: #0ea5e9; }
+  .drive__ticon :global(.icon) { inline-size: 11px; block-size: 11px; }
+  .drive__nm { display: grid; gap: 3px; min-inline-size: 0; }
+  .drive__nm-text { font-weight: 600; font-size: var(--fs-sm); color: var(--c-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .drive__tags { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .drive__tags:empty { display: none; }
+  .drive__chosen { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 700; color: #fff; background: var(--c-success); border-radius: 999px; padding: 1px 8px 1px 6px; }
+  .drive__chosen :global(.icon) { inline-size: 12px; block-size: 12px; }
+  .drive__amt { font-size: 12px; font-weight: 600; color: var(--c-ink-2); direction: ltr; unicode-bidi: isolate; }
+  .drive__lang { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; font-weight: 700; color: var(--c-primary-700); background: var(--c-primary-50); border-radius: 999px; padding: 1px 7px; }
+  .drive__lang :global(.icon) { inline-size: 11px; block-size: 11px; }
+  .drive__cell { font-size: var(--fs-xs); color: var(--c-muted); }
+  .drive__cell-act { display: flex; align-items: center; gap: 6px; min-inline-size: 0; }
+  .drive__cell-act span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .drive__cell-act :global(.icon) { flex: none; color: var(--c-line-strong); }
+  @media (max-width: 1099px) {
+    .drive__file { grid-template-columns: minmax(0, 1fr) auto; }
+    .drive__file .drive__cell:nth-child(2) { grid-column: 2; grid-row: 1; align-self: start; }
+    .drive__file .drive__cell:nth-child(3) { display: none; }
+    .drive__file .drive__cell-act { grid-column: 1 / -1; padding-inline-start: calc(46px + var(--sp-3)); }
+  }
+  /* Vista griglia */
+  .drive[data-view='grid'] .drive__table { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: var(--sp-3); }
+  .drive[data-view='grid'] .drive__row--head { display: none; }
+  .drive[data-view='grid'] .drive__file { display: flex; flex-direction: column; align-items: stretch; gap: 8px; padding: 10px; border: 1px solid var(--c-line); box-shadow: none; background: #fff; }
+  .drive[data-view='grid'] .drive__file.is-chosen { border-color: #86efac; box-shadow: 0 0 0 2px var(--c-success-50); }
+  .drive[data-view='grid'] .drive__file:hover { border-color: var(--c-primary-100); box-shadow: var(--sh-md); }
+  .drive[data-view='grid'] .drive__cell-name { flex-direction: column; align-items: stretch; gap: 8px; }
+  .drive[data-view='grid'] .drive__thumb { inline-size: 100%; block-size: 150px; border-radius: 8px; }
+  .drive[data-view='grid'] .drive__thumb img { object-fit: cover; }
+  .drive[data-view='grid'] .drive__thumb--image img { object-position: center; }
+  .drive[data-view='grid'] .drive__nm-text { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; font-size: 13px; }
+  .drive[data-view='grid'] .drive__cell:nth-child(3), .drive[data-view='grid'] .drive__cell-act { display: none; }
+  .drive[data-view='grid'] .drive__cell { padding: 0; }
+  .drive__empty { display: flex; align-items: center; gap: 8px; color: var(--c-muted); padding: var(--sp-6) 0; justify-content: center; }
+  .drive__foot { display: flex; flex-wrap: wrap; align-items: center; gap: 6px var(--sp-3); margin: 0; padding: var(--sp-3) var(--sp-5); font-size: 12px; color: var(--c-muted); border-block-start: 1px solid var(--c-line); background: #fbfcfe; }
+  .drive__foot :global(.icon) { color: var(--c-success); }
+  .drive__kbd { margin-inline-start: auto; }
+  @media (max-width: 899px), (hover: none) { .drive__kbd { display: none; } }
+  /* Dialog anteprima */
+  .dv { padding: 0; border: 0; border-radius: 20px; inline-size: min(1180px, calc(100vw - 32px)); block-size: min(860px, calc(100vh - 32px)); max-inline-size: none; max-block-size: none; background: #fff; box-shadow: 0 40px 80px rgb(0 0 0 / .35); overflow: hidden; }
+  .dv::backdrop { background: rgb(11 19 36 / .62); backdrop-filter: blur(4px); }
+  .dv[open] { animation: dv-in .22s cubic-bezier(.2, .8, .2, 1); }
+  @keyframes dv-in { from { opacity: 0; transform: translateY(12px) scale(.98); } }
+  @media (prefers-reduced-motion: reduce) { .dv[open] { animation: none; } }
+  .dv__inner { display: grid; grid-template-rows: auto 1fr; block-size: 100%; }
+  .dv__head { display: flex; align-items: center; gap: var(--sp-3); padding: 12px var(--sp-4); border-block-end: 1px solid var(--c-line); background: #fbfcfe; min-inline-size: 0; }
+  .dv__ic { display: grid; place-items: center; inline-size: 32px; block-size: 32px; border-radius: 8px; background: #e11d48; color: #fff; flex: none; }
+  .dv__ic[data-kind='image'] { background: #0ea5e9; }
+  .dv__title { margin: 0; font-size: var(--fs-md); flex: 1; min-inline-size: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dv__nav { display: flex; align-items: center; gap: 4px; flex: none; }
+  .dv__pos { font-size: var(--fs-xs); color: var(--c-muted); min-inline-size: 48px; text-align: center; }
+  .dv__btn { display: grid; place-items: center; inline-size: 38px; block-size: 38px; border-radius: 10px; border: 1px solid var(--c-line); background: #fff; color: var(--c-ink); cursor: pointer; }
+  .dv__btn:hover:not(:disabled) { background: var(--c-surface-2); }
+  .dv__btn:disabled { opacity: .35; cursor: default; }
+  .dv__btn:focus-visible { outline: 3px solid var(--c-primary-100); }
+  .dv__close { margin-inline-start: 6px; }
+  .dv :global(.dv__flip) { transform: scaleX(-1); }
+  :global([dir='rtl']) .dv :global(.dv__flip) { transform: none !important; }
+  .dv__body { display: grid; grid-template-columns: 1fr; min-block-size: 0; overflow: auto; }
+  @media (min-width: 900px) { .dv__body { grid-template-columns: 1fr 340px; overflow: hidden; } }
+  .dv__stage { background: radial-gradient(circle at 30% 20%, #3a4458, #1d2433 70%); padding: var(--sp-5); display: grid; gap: var(--sp-5); justify-items: center; align-content: start; min-block-size: 360px; overflow: auto; }
+  .dv__stage:focus-visible { outline: 3px solid var(--c-primary-100); outline-offset: -3px; }
+  .dv__stage :global(figure) { margin: 0; display: grid; gap: 8px; justify-items: center; }
+  .dv__stage :global(img) { display: block; max-inline-size: min(100%, 720px); block-size: auto; border-radius: 4px; box-shadow: 0 18px 40px rgb(0 0 0 / .45); background: #fff; }
+  .dv__stage[data-kind='image'] :global(img) { max-inline-size: 100%; max-block-size: 70vh; border-radius: 10px; }
+  .dv__stage :global(figcaption) { font-size: 12px; color: #b8c3d9; }
+  .dv__panel { padding: var(--sp-4) var(--sp-5); border-inline-start: 1px solid var(--c-line); overflow: auto; }
+  .dv__panel h4 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--c-muted); margin: var(--sp-4) 0 var(--sp-2); }
+  :lang(he) .dv__panel h4 { letter-spacing: 0; }
+  .dv__panel h4:first-of-type { margin-block-start: 0; }
+  .dv__chosen { background: var(--c-success-50); border: 1px solid #bbf7d0; border-radius: 12px; padding: 12px 14px; margin-block-end: var(--sp-4); }
+  .dv__chosen p { margin: 0; font-size: var(--fs-sm); color: #14532d; }
+  .dv__chosen-h { display: flex; align-items: center; gap: 6px; font-weight: 700; color: var(--c-success) !important; margin-block-end: 4px !important; }
+  .dv__dl { display: grid; grid-template-columns: auto 1fr; gap: 6px var(--sp-3); margin: 0; font-size: var(--fs-sm); }
+  .dv__dl :global(dt) { color: var(--c-muted); }
+  .dv__dl :global(dd) { margin: 0; color: var(--c-ink); font-weight: 500; }
+  .dv__dl-btn { margin-block-start: var(--sp-4); inline-size: 100%; justify-content: center; }
+  .dv__acts { list-style: none; margin: 0; padding: 0; position: relative; display: grid; gap: var(--sp-3); }
+  .dv__acts::before { content: ''; position: absolute; inset-block: 8px; inset-inline-start: 7px; inline-size: 2px; background: var(--c-line); }
+  .dv__acts :global(li) { position: relative; display: grid; gap: 2px; padding-inline-start: 26px; }
+  .dv__acts :global(li)::before { content: ''; position: absolute; inset-inline-start: 2px; inset-block-start: 5px; inline-size: 12px; block-size: 12px; border-radius: 50%; background: #fff; border: 3px solid var(--c-primary); }
+  .dv__acts :global(li[data-action='viewed'])::before, .dv__acts :global(li[data-action='downloaded'])::before { border-color: #94a3b8; }
+  .dv__acts :global(li[data-action='approved'])::before, .dv__acts :global(li[data-action='acknowledged'])::before, .dv__acts :global(li[data-action='signed'])::before, .dv__acts :global(li[data-action='paid'])::before { border-color: var(--c-success); background: var(--c-success); }
+  .dv__acts :global(.dv__act-t) { font-size: var(--fs-sm); font-weight: 600; color: var(--c-ink); }
+  .dv__acts :global(time) { font-size: 12px; color: var(--c-muted); }
+  @media (max-width: 899px) {
+    .dv { inline-size: 100vw; block-size: 100dvh; border-radius: 0; max-block-size: 100dvh; }
+    .dv__stage { min-block-size: 0; padding: var(--sp-3); }
+    .dv__panel { border-inline-start: 0; border-block-start: 1px solid var(--c-line); overflow: visible; }
+    .dv__head .drive__ex { display: none; }
+  }
+  @media print { .drive { box-shadow: none; } .dv { display: none; } }
+</style>

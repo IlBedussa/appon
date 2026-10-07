@@ -1,0 +1,21 @@
+---
+// Pagina 404 (in inglese, lingua predefinita, con testo e link anche in ebraico, francese e italiano). La maggior parte degli hosting statici la usa automaticamente.
+import Base from '../layouts/Base.astro';
+import Icon from '../components/Icon.astro';
+import { locales, url, t } from '../i18n/config';
+const d = t('en');
+---
+<Base lang="en" page="home" title={d.pages.notFound.title} description={d.pages.notFound.description} noindex>
+  <section class="section">
+    <div class="container" style="text-align:center; max-inline-size: 640px">
+      <p class="eyebrow">404</p>
+      {locales.map((l) => (
+        <div lang={l} dir={l === 'he' ? 'rtl' : 'ltr'} style="margin-block-end: var(--sp-6)">
+          <h1 style="font-size: var(--fs-xl)">{t(l).pages.notFound.h1}</h1>
+          <p>{t(l).pages.notFound.lead}</p>
+          <a class="btn btn--secondary btn--sm" href={url(l, 'home')}>{t(l).nav.home} <Icon name="arrow" /></a>
+        </div>
+      ))}
+    </div>
+  </section>
+</Base>

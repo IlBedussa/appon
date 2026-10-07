@@ -1,0 +1,79 @@
+---
+// Rendiconti: elenco e creazione (bozza), con precompilazione da contratti attivi.
+import AppLayout from '../../../layouts/AppLayout.astro';
+import Field from '../../../components/Field.astro';
+import Csrf from '../../../components/Csrf.astro';
+import Icon from '../../../components/Icon.astro';
+import Money from '../../../components/Money.astro';
+import Pill from '../../../components/Pill.astro';
+import { z, formToObject, month, checkbox } from '../../../lib/validation';
+import { setFlash } from '../../../lib/flash';
+import { monthLong, monthStart } from '../../../lib/format';
+
+const { t, supabase, user, intl } = Astro.locals;
+let error = '';
+if (Astro.request.method === 'POST') {
+  const p = z.object({ owner_id: z.uuid(), month, prefill: checkbox, fee_pct: z.coerce.number().min(0).max(50).default(8) }).safeParse(formToObject(await Astro.request.formData()));
+  if (!p.success) error = t.common.invalid;
+  else {
+    const period = `${p.data.month}-01`;
+    const { data: st, error: e } = await supabase.from('statements').insert({ owner_id: p.data.owner_id, period, status: 'draft', created_by: user!.id }).select('id').single();
+    if (e || !st) error = e?.code === '23505' ? t.admin.st.exists : t.common.error;
+    else {
+      if (p.data.prefill) {
+        // affitti dei contratti attivi + commissione di gestione
+        const { data: leases } = await supabase.from('leases').select('monthly_rent_ils, payment_day, property_id, property:properties!inner(owner_id)')
+          .eq('status', 'active').eq('property.owner_id', p.data.owner_id);
+        const lines = (leases ?? []).flatMap((l) => {
+          const d = `${p.data.month}-${String(l.payment_day).padStart(2, '0')}`;
+          const rent = Number(l.monthly_rent_ils);
+          return [
+            { statement_id: st.id, property_id: l.property_id, line_date: d, category: 'rent', description: '', amount_ils: rent },
+            { statement_id: st.id, property_id: l.property_id, line_date: d, category: 'management_fee', description: `${p.data.fee_pct}%`, amount_ils: -Math.round(rent * p.data.fee_pct) / 100 },
+          ].filter((x) => x.amount_ils !== 0);
+        });
+        if (lines.length) await supabase.from('statement_lines').insert(lines);
+      }
+      return Astro.redirect(`/admin/statements/${st.id}`, 303);
+    }
+  }
+}
+const [{ data: rows }, { data: owners }] = await Promise.all([
+  supabase.from('statements').select('id, period, status, published_at, owner:owners(full_name), statement_lines(amount_ils)').order('period', { ascending: false }).limit(300),
+  supabase.from('owners').select('id, full_name').order('full_name'),
+]);
+const thisMonth = monthStart(new Date()).slice(0, 7);
+---
+<AppLayout title={t.st.title} active="statements">
+  <details class="create" open={!!error}>
+    <summary><Icon name="plus" /> {t.admin.st.new}</summary>
+    <div class="create-body">
+      {error && <p class="form-status" data-type="error" role="alert">{error}</p>}
+      <form method="post" class="form-grid">
+        <Csrf />
+        <Field name="owner_id" label={t.admin.st.owner} required options={(owners ?? []).map((o) => ({ value: o.id, label: o.full_name }))} />
+        <Field name="month" type="month" label={t.admin.st.month} required value={thisMonth} />
+        <Field name="prefill" type="checkbox" label={t.admin.st.prefill} checked />
+        <Field name="fee_pct" type="number" label={t.admin.st.feePct} value="8" step="0.1" min="0" max="50" required />
+        <div class="form-actions span-2"><button class="btn btn--primary btn--sm" type="submit">{t.common.create}</button></div>
+      </form>
+    </div>
+  </details>
+  <div class="table-wrap dtable dcard flush">
+    <table>
+      <caption class="visually-hidden">{t.st.title}</caption>
+      <thead><tr><th scope="col">{t.st.period}</th><th scope="col">{t.common.owner}</th><th scope="col">{t.common.status}</th><th scope="col" class="num">{t.st.net}</th><th scope="col">{t.common.actions}</th></tr></thead>
+      <tbody>
+        {(rows ?? []).map((s) => (
+          <tr>
+            <th scope="row"><a href={`/admin/statements/${s.id}`}>{monthLong(s.period, intl)}</a></th>
+            <td>{(s.owner as any)?.full_name}</td>
+            <td><Pill tone={s.status === 'published' ? 'ok' : 'warn'}>{(t.stStatus as Record<string, string>)[s.status]}</Pill></td>
+            <td class="num"><Money v={(s.statement_lines ?? []).reduce((a, l) => a + Number(l.amount_ils), 0)} /></td>
+            <td><a class="btn btn--secondary btn--xs" href={`/admin/statements/${s.id}`}>{t.common.edit}</a></td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+</AppLayout>

@@ -1,0 +1,42 @@
+---
+// Vista di un rendiconto: riepilogo + tabella voci (usata da proprietario e back-office).
+import Money from './Money.astro';
+import Icon from './Icon.astro';
+import { date, monthLong } from '../lib/format';
+interface Line { id: string; line_date: string; category: string; description: string; amount_ils: number; property?: { code: string; name: string } | null; document_id?: string | null }
+interface Props { period: string; lines: Line[]; pdfHref?: string; caption?: string }
+const { period, lines, pdfHref } = Astro.props;
+const { t, intl } = Astro.locals;
+const inc = lines.filter((l) => l.amount_ils > 0).reduce((a, l) => a + Number(l.amount_ils), 0);
+const exp = lines.filter((l) => l.amount_ils < 0).reduce((a, l) => a + Number(l.amount_ils), 0);
+const sorted = [...lines].sort((a, b) => a.line_date.localeCompare(b.line_date));
+---
+<div class="dcard st">
+  <div class="panel-bar">
+    <h2 class="panel-h mt-0">{t.st.title} · {monthLong(period, intl)}</h2>
+    {pdfHref && <a class="btn btn--primary btn--sm" href={pdfHref} data-testid="pdf-link"><Icon name="download" /> {t.st.downloadPdf}</a>}
+  </div>
+  <div class="st-sum">
+    <div><small>{t.st.income}</small><strong class="pos"><Money v={inc} /></strong></div>
+    <div><small>{t.st.expenses}</small><strong><Money v={exp} /></strong></div>
+    <div class="st-net"><small>{t.st.net}</small><strong><Money v={inc + exp} /></strong></div>
+  </div>
+  <div class="table-wrap dtable">
+    <table>
+      <caption class="visually-hidden">{t.st.title} · {monthLong(period, intl)}</caption>
+      <thead><tr><th scope="col">{t.common.date}</th><th scope="col">{t.st.item}</th><th scope="col">{t.common.property}</th><th scope="col" class="num">{t.common.amount}</th></tr></thead>
+      <tbody>
+        {sorted.map((l) => (
+          <tr>
+            <td class="nowrap">{date(l.line_date, intl, { day: 'numeric', month: 'short' })}</td>
+            <th scope="row">{(t.categories as Record<string, string>)[l.category] ?? l.category}{l.description && <small class="muted"> · {l.description}</small>}
+              {l.document_id && <a class="doc-chip" href={`/files/document/${l.document_id}`}><Icon name="paperclip" /> {t.common.open}</a>}</th>
+            <td>{l.property ? `${l.property.code} · ${l.property.name}` : '—'}</td>
+            <td class={`num ${l.amount_ils > 0 ? 'pos' : ''}`}><Money v={l.amount_ils} signed /></td>
+          </tr>
+        ))}
+      </tbody>
+      <tfoot><tr><th scope="row" colspan="3">{t.st.net}</th><td class="num"><strong><Money v={inc + exp} /></strong></td></tr></tfoot>
+    </table>
+  </div>
+</div>

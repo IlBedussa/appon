@@ -1,0 +1,39 @@
+---
+// Elenco rendiconti pubblicati (le bozze sono invisibili al proprietario per RLS).
+import AppLayout from '../../../layouts/AppLayout.astro';
+import Money from '../../../components/Money.astro';
+import Icon from '../../../components/Icon.astro';
+import { monthLong, date } from '../../../lib/format';
+
+const { t, supabase, intl } = Astro.locals;
+const { data } = await supabase.from('statements').select('id, period, published_at, statement_lines(amount_ils)').order('period', { ascending: false });
+const rows = (data ?? []).map((s) => {
+  const inc = (s.statement_lines ?? []).filter((l) => l.amount_ils > 0).reduce((a, l) => a + Number(l.amount_ils), 0);
+  const exp = (s.statement_lines ?? []).filter((l) => l.amount_ils < 0).reduce((a, l) => a + Number(l.amount_ils), 0);
+  return { ...s, inc, exp, net: inc + exp };
+});
+---
+<AppLayout title={t.st.title} active="statements">
+  {rows.length === 0 ? <p class="empty">{t.st.empty}</p> : (
+    <div class="table-wrap dtable dcard flush">
+      <table>
+        <caption class="visually-hidden">{t.st.title}</caption>
+        <thead><tr><th scope="col">{t.st.period}</th><th scope="col" class="num">{t.st.income}</th><th scope="col" class="num">{t.st.expenses}</th><th scope="col" class="num">{t.st.net}</th><th scope="col">{t.common.actions}</th></tr></thead>
+        <tbody>
+          {rows.map((s) => (
+            <tr>
+              <th scope="row"><a href={`/owner/statements/${s.id}`}>{monthLong(s.period, intl)}</a><small class="muted"> · {date(s.published_at, intl)}</small></th>
+              <td class="num pos"><Money v={s.inc} /></td>
+              <td class="num"><Money v={s.exp} /></td>
+              <td class="num"><strong><Money v={s.net} /></strong></td>
+              <td><div class="row-actions">
+                <a class="btn btn--secondary btn--xs" href={`/owner/statements/${s.id}`}>{t.common.view}<span class="visually-hidden"> {monthLong(s.period, intl)}</span></a>
+                <a class="btn btn--secondary btn--xs" href={`/owner/statements/${s.id}/pdf`}><Icon name="download" /> PDF<span class="visually-hidden"> {monthLong(s.period, intl)}</span></a>
+              </div></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )}
+</AppLayout>

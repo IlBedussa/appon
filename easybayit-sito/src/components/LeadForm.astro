@@ -1,0 +1,66 @@
+---
+// Modulo "richiesta proposta": valida nel browser e invia a /api/lead/ (Resend lato server;
+// senza RESEND_API_KEY l'endpoint lavora in modalità mock). Honeypot + tempo minimo anti-bot.
+import Icon from './Icon.astro';
+import { url, tx, type Locale } from '../i18n/config';
+interface Props { lang: Locale; id: string; title?: string; text?: string; submit?: string; context?: string; extra?: 'b2b' }
+const { lang, id, title, text, submit, context = '', extra } = Astro.props;
+const c = tx(lang).common.lead;
+const b = tx(lang).b2b;
+---
+<form class="lead card" id={id} novalidate data-lead data-context={context} aria-labelledby={`${id}-title`}>
+  <h2 class="lead__title" id={`${id}-title`}>{title ?? c.title}</h2>
+  <p class="lead__text">{text ?? c.text}</p>
+  <div class="lead__grid">
+    <div class="field"><label for={`${id}-name`}>{c.name}</label><input class="input" id={`${id}-name`} name="name" autocomplete="name" required /></div>
+    <div class="field"><label for={`${id}-email`}>{c.email}</label><input class="input" id={`${id}-email`} name="email" type="email" autocomplete="email" required /></div>
+    <div class="field"><label for={`${id}-phone`}>{c.phone}</label><input class="input" id={`${id}-phone`} name="phone" type="tel" autocomplete="tel" /></div>
+    {extra === 'b2b' && <>
+      <div class="field"><label for={`${id}-company`}>{b.company}</label><input class="input" id={`${id}-company`} name="company" autocomplete="organization" /></div>
+      <div class="field"><label for={`${id}-role`}>{b.role}</label>
+        <select class="input" id={`${id}-role`} name="role">{b.roles.map((r) => <option>{r}</option>)}</select></div>
+      <div class="field"><label for={`${id}-projects`}>{b.projects}</label><input class="input" id={`${id}-projects`} name="projects" /></div>
+    </>}
+  </div>
+  <label class="lead__consent"><input type="checkbox" name="consent" required /> <span>{c.consentA}<a href={url(lang, 'privacy')}>{c.consentLink}</a>{c.consentB}</span></label>
+  <input type="hidden" name="context" value={context} />
+  <div class="hp" aria-hidden="true"><label for={`${id}-website`}>Website</label><input id={`${id}-website`} name="website" type="text" tabindex="-1" autocomplete="off" /></div>
+  <button class="btn btn--primary" type="submit">{submit ?? c.submit} <Icon name="arrow" /></button>
+  <p class="form-status" role="status" aria-live="polite" data-ok={c.success} data-err={c.required} data-fail={tx(lang).common.sendFail}></p>
+</form>
+<script>
+  // Validazione minima e invio a /api/lead/.
+  import { sendLead } from '../lib/lead-client';
+  document.querySelectorAll<HTMLFormElement>('form[data-lead]').forEach((f) => {
+    const avvio = Date.now();
+    f.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const st = f.querySelector<HTMLElement>('.form-status')!;
+      const fd = new FormData(f);
+      const name = String(fd.get('name') ?? '').trim();
+      const email = f.elements.namedItem('email') as HTMLInputElement;
+      const consent = (f.elements.namedItem('consent') as HTMLInputElement).checked;
+      const ok = name.length > 1 && email.validity.valid && email.value.includes('@') && consent;
+      if (!ok) { st.textContent = st.dataset.err ?? ''; st.dataset.type = 'error'; return; }
+      const btn = f.querySelector<HTMLButtonElement>('button[type=submit]')!;
+      btn.disabled = true;
+      const data: Record<string, unknown> = Object.fromEntries([...fd.entries()].map(([k, v]) => [k, String(v)]));
+      data.consent = true;
+      const r = await sendLead('lead', data, avvio);
+      btn.disabled = false;
+      st.textContent = (r.ok ? st.dataset.ok : st.dataset.fail) ?? '';
+      st.dataset.type = r.ok ? 'success' : 'error';
+      if (r.ok) f.reset();
+    });
+  });
+</script>
+<style>
+  .lead { display: grid; gap: var(--sp-4); }
+  .lead__title { font-size: var(--fs-xl); margin: 0; }
+  .lead__text { margin: 0; color: var(--c-ink-2); }
+  .lead__grid { display: grid; gap: var(--sp-4); }
+  @media (min-width: 640px) { .lead__grid { grid-template-columns: 1fr 1fr; } }
+  .lead__consent { display: flex; gap: var(--sp-2); align-items: flex-start; font-size: var(--fs-sm); color: var(--c-ink-2); }
+  .lead__consent input { margin-block-start: .3em; inline-size: 18px; block-size: 18px; flex: none; }
+  .lead .btn { justify-self: start; }
+</style>

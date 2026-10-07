@@ -1,0 +1,57 @@
+---
+// Tempi di risposta "misurati": obiettivi segnaposto + colonna "media misurata" che sarà pubblicata dal portale.
+import Icon from '../Icon.astro';
+import T from '../T.astro';
+import { tx, type Locale } from '../../i18n/config';
+interface Props { lang: Locale; dark?: boolean }
+const { lang, dark = true } = Astro.props;
+const s = tx(lang).offer.sla;
+---
+<section class:list={['section', { 'section--dark': dark }]} id="sla">
+  <div class="container sla">
+    <div data-reveal>
+      <p class="eyebrow sla__eyebrow"><Icon name="clock" /> {s.eyebrow}</p>
+      <h2>{s.title}</h2>
+      <p class="sla__lead">{s.lead}</p>
+      <p class="sla__legal"><Icon name="info" /> <span>{s.legal}</span></p>
+    </div>
+    <div class="sla__table" data-reveal role="region" aria-label={s.title} tabindex="0">
+      <table>
+        <thead><tr><th scope="col">{s.colMetric}</th><th scope="col">{s.colTarget}</th><th scope="col">{s.colMeasured}</th></tr></thead>
+        <tbody>
+          {s.rows.map((r) => (
+            <tr>
+              <th scope="row">{r.metric}</th>
+              <td><T text={r.target} /></td>
+              <td><span class="sla__pending"><span class="sla__pulse" aria-hidden="true"></span>{s.pending}</span></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+<style>
+  .sla { display: grid; gap: var(--sp-6); align-items: start; }
+  @media (min-width: 1024px) { .sla { grid-template-columns: 1fr 1.5fr; } }
+  .section--dark .sla__eyebrow { background: rgb(255 255 255 / .08); border-color: rgb(255 255 255 / .16); color: var(--c-accent); }
+  .sla__lead { font-size: var(--fs-lg); }
+  .sla__legal { display: flex; gap: var(--sp-2); font-size: var(--fs-sm); opacity: .9; }
+  .sla__legal :global(.icon) { flex: none; margin-block-start: .2em; }
+  .sla__table { overflow-x: auto; border-radius: var(--r-lg); border: 1px solid rgb(255 255 255 / .14); background: rgb(255 255 255 / .03); }
+  .sla__table table { inline-size: 100%; border-collapse: collapse; min-inline-size: 520px; font-size: var(--fs-sm); }
+  .sla__table th, .sla__table td { padding: var(--sp-3) var(--sp-4); text-align: start; border-block-start: 0; border-block-end: 1px solid rgb(255 255 255 / .1); vertical-align: top; }
+  .sla__table thead th { background: rgb(255 255 255 / .06); white-space: normal; color: #fff; font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .06em; }
+  :lang(he) .sla__table thead th { letter-spacing: 0; }
+  .sla__table tbody th { font-weight: 500; color: #e6ebf5; }
+  .sla__table tbody tr:last-child > * { border: 0; }
+  .sla__pending { display: inline-flex; align-items: center; gap: 8px; color: var(--c-accent); font-weight: 600; }
+  .sla__pulse { inline-size: 8px; block-size: 8px; border-radius: 50%; background: var(--c-accent); flex: none; }
+  /* Variante chiara */
+  .section:not(.section--dark) .sla__table { border-color: var(--c-line); background: #fff; }
+  .section:not(.section--dark) .sla__table th, .section:not(.section--dark) .sla__table td { border-color: var(--c-line); }
+  .section:not(.section--dark) .sla__table thead th, .section:not(.section--dark) .sla__table tbody th { color: var(--c-ink); }
+  .section:not(.section--dark) .sla__table thead th { background: var(--c-surface); }
+  .section:not(.section--dark) .sla__pending { color: var(--c-secondary); }
+  .section:not(.section--dark) .sla__pulse { background: var(--c-secondary); }
+</style>

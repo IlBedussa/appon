@@ -1,0 +1,33 @@
+---
+// Scadenze in arrivo: documenti con data di scadenza (assicurazione, controlli gas/caldaia…) e fine contratti.
+import Icon from './Icon.astro';
+import Pill from './Pill.astro';
+import { fill } from '../i18n';
+import { date } from '../lib/format';
+interface Props { days?: number; linkBase?: string }
+const { days = 120 } = Astro.props;
+const { t, supabase, intl } = Astro.locals;
+const until = new Date(Date.now() + days * 86400000).toISOString().slice(0, 10);
+const [{ data: docs }, { data: leases }] = await Promise.all([
+  supabase.from('documents').select('id, title, category, expires_on, property:properties(code)').not('expires_on', 'is', null).lte('expires_on', until).order('expires_on').limit(10),
+  supabase.from('leases').select('id, end_date, property:properties(code, name)').eq('status', 'active').lte('end_date', until).order('end_date').limit(10),
+]);
+const today = new Date().toISOString().slice(0, 10);
+const items = [
+  ...(docs ?? []).map((d) => ({ key: d.id, label: d.title, sub: (d.property as any)?.code ?? '', when: d.expires_on as string, href: `/files/document/${d.id}` })),
+  ...(leases ?? []).map((l) => ({ key: l.id, label: fill(t.pri.leaseEnds, { p: `${(l.property as any)?.code} · ${(l.property as any)?.name}` }), sub: '', when: l.end_date as string, href: '' })),
+].sort((a, b) => a.when.localeCompare(b.when));
+---
+<section class="dcard" aria-labelledby="h-exp" data-testid="expiries-widget">
+  <div class="dcard-head"><strong id="h-exp">{t.pri.expiries}</strong><Icon name="clock" /></div>
+  {items.length === 0 ? <p class="empty">{t.pri.noExpiries}</p> : (
+    <ul class="event-list">
+      {items.map((i) => (
+        <li>
+          <span>{i.href ? <a href={i.href}>{i.label}</a> : i.label}{i.sub && <small> · {i.sub}</small>}</span>
+          {i.when < today ? <Pill tone="urgent">{`${t.pri.expired} · ${date(i.when, intl)}`}</Pill> : <Pill tone="warn">{date(i.when, intl)}</Pill>}
+        </li>
+      ))}
+    </ul>
+  )}
+</section>

@@ -1,0 +1,25 @@
+---
+// Pagine di accesso (login, 2FA, reset): scheda centrata con logo e selettore lingua.
+import Base from './Base.astro';
+import Logo from '../components/Logo.astro';
+import LangSwitcher from '../components/LangSwitcher.astro';
+import Flash from '../components/Flash.astro';
+import Icon from '../components/Icon.astro';
+interface Props { title: string }
+const { title } = Astro.props;
+const { t } = Astro.locals;
+---
+<Base title={title} bodyClass="auth-body">
+  <header class="auth-top">
+    <Logo />
+    <LangSwitcher />
+  </header>
+  <main id="main" class="auth-main" tabindex="-1">
+    <div class="auth-card">
+      <Flash />
+      <slot />
+    </div>
+    <p class="auth-note"><Icon name="lock" /> {t.auth.secureNote} · {t.auth.noCard}</p>
+  </main>
+  <footer class="auth-foot"><small>{t.meta.company}</small></footer>
+</Base>

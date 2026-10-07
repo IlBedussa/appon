@@ -1,0 +1,35 @@
+---
+// Storico pagamenti (solo registrazioni: nessun incasso online).
+import Money from './Money.astro';
+import { date, monthLong } from '../lib/format';
+interface Pay { id: string; paid_on: string; period: string | null; amount_ils: number; kind: string; method: string; status: string; reference: string | null; property?: { code: string; name: string } | null; tenant?: { full_name: string } | null }
+interface Props { rows: Pay[]; showTenant?: boolean }
+const { rows, showTenant = true } = Astro.props;
+const { t, intl } = Astro.locals;
+const tone: Record<string, string> = { paid: 'pill--pay-paid', late: 'pill--pay-late', pending: 'pill--pay-pending' };
+---
+{rows.length === 0 ? <p class="empty">{t.pay.empty}</p> : (
+  <div class="table-wrap dtable dcard flush">
+    <table>
+      <caption class="visually-hidden">{t.pay.title}</caption>
+      <thead><tr>
+        <th scope="col">{t.pay.paidOn}</th><th scope="col">{t.common.property}</th>{showTenant && <th scope="col">{t.common.tenant}</th>}
+        <th scope="col">{t.pay.kind}</th><th scope="col">{t.pay.period}</th><th scope="col">{t.pay.method}</th><th scope="col">{t.common.status}</th><th scope="col" class="num">{t.common.amount}</th>
+      </tr></thead>
+      <tbody>
+        {rows.map((p) => (
+          <tr>
+            <td class="nowrap">{date(p.paid_on, intl)}</td>
+            <th scope="row">{p.property ? `${p.property.code} · ${p.property.name}` : '—'}</th>
+            {showTenant && <td>{p.tenant?.full_name ?? '—'}</td>}
+            <td>{(t.payKind as Record<string, string>)[p.kind]}</td>
+            <td class="nowrap">{p.period ? monthLong(p.period, intl) : '—'}</td>
+            <td>{(t.payMethod as Record<string, string>)[p.method]}</td>
+            <td><span class={`pill ${tone[p.status]}`}>{(t.payStatus as Record<string, string>)[p.status]}</span></td>
+            <td class="num"><Money v={p.amount_ils} /></td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+)}

@@ -1,0 +1,47 @@
+---
+// Elenco ispezioni (schede) per staff, proprietario e inquilino.
+import Icon from './Icon.astro';
+import Pill from './Pill.astro';
+import { fill } from '../i18n';
+import { ix } from '../i18n/inspections';
+import { date } from '../lib/format';
+interface Row { id: string; kind: 'move_in' | 'move_out' | 'annual'; status: 'draft' | 'completed'; performed_at: string; property: { code: string; name: string } | null; items: { count: number }[]; photos: { count: number }[]; acked?: boolean }
+interface Props { rows: Row[]; base: string; showAck?: boolean }
+const { rows, base, showAck = false } = Astro.props;
+const { intl, lang } = Astro.locals;
+const x = ix(lang);
+---
+{rows.length === 0 ? <p class="empty">{x.empty}</p> : (
+  <ul class="insp-list" data-testid="insp-list">
+    {rows.map((r) => (
+      <li>
+        <a class="insp-card" href={`${base}/${r.id}`}>
+          <span class={`insp-card__ic insp-card__ic--${r.kind}`} aria-hidden="true"><Icon name="camera" /></span>
+          <span class="insp-card__body">
+            <strong>{x.kinds[r.kind]}</strong>
+            <small>{r.property ? `${r.property.code} · ${r.property.name} · ` : ''}{date(r.performed_at, intl, { day: 'numeric', month: 'long', year: 'numeric' })}</small>
+            <small class="muted">{fill(x.items, { n: r.items?.[0]?.count ?? 0 })} · {fill(x.photos, { n: r.photos?.[0]?.count ?? 0 })}</small>
+          </span>
+          <span class="insp-card__pills">
+            <Pill tone={r.status === 'completed' ? 'ok' : 'warn'}>{x.status[r.status]}</Pill>
+            {showAck && r.status === 'completed' && (r.acked ? <Pill tone="info">{x.acked}</Pill> : <Pill tone="warn">{x.toAck}</Pill>)}
+          </span>
+          <Icon name="arrow" />
+        </a>
+      </li>
+    ))}
+  </ul>
+)}
+<style>
+  .insp-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--sp-3); }
+  .insp-card { display: flex; align-items: center; gap: var(--sp-4); padding: var(--sp-4) var(--sp-5); background: var(--d-card, #fff); border: 1px solid var(--d-line); border-radius: var(--r-lg); box-shadow: var(--d-shadow); color: inherit; text-decoration: none; transition: transform .15s, border-color .15s; }
+  .insp-card:hover { transform: translateY(-1px); border-color: #1a4fd6; }
+  .insp-card__ic { display: grid; place-items: center; flex: none; inline-size: 44px; block-size: 44px; border-radius: 12px; color: #fff; background: linear-gradient(135deg, #1a4fd6, #3b82f6); }
+  .insp-card__ic--move_out { background: linear-gradient(135deg, #b45309, #f59e0b); }
+  .insp-card__ic--annual { background: linear-gradient(135deg, #0f766e, #14b8a6); }
+  .insp-card__body { flex: 1; display: grid; gap: 2px; min-inline-size: 0; }
+  .insp-card__body small { font-size: var(--fs-xs); }
+  .insp-card__pills { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+  .insp-card > :global(.icon:last-child) { color: var(--d-muted); flex: none; }
+  @media (max-width: 640px) { .insp-card { flex-wrap: wrap; } .insp-card__pills { inline-size: 100%; justify-content: flex-start; } }
+</style>

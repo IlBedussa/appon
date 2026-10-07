@@ -1,0 +1,85 @@
+---
+// Web chat del portale: stesso motore del bot WhatsApp (canale "webchat", inquilino dalla sessione).
+import AppLayout from '../../../layouts/AppLayout.astro';
+import { POLICY } from '../../../lib/upload-policy';
+const { t } = Astro.locals;
+// allegati caricati direttamente sullo storage (URL firmato), poi inviati al bot come uploadId
+const pol = POLICY.webchat;
+const limits = Object.fromEntries(pol.mimes.map((m) => [m, pol.maxBytes(m)]));
+---
+<AppLayout title={t.chat.title} active="chat">
+  <section class="dcard chat" aria-labelledby="h-chat" data-csrf={Astro.locals.csrf} data-testid="webchat"
+    data-du-limits={JSON.stringify(limits)} data-du-i18n={JSON.stringify(t.up)}>
+    <div class="dcard-head"><span><strong id="h-chat">{t.chat.title}</strong><small>{t.chat.sub}</small></span></div>
+    <div id="chat-log" class="chat-log" aria-live="polite"></div>
+    <p id="chat-upload" class="small muted" role="status" hidden><span></span> <progress max="100" value="0"></progress></p>
+    <form id="chat-form" class="chat-form">
+      <label for="chat-file" class="btn btn--secondary btn--sm chat-attach" title={t.chat.attach}>📎<span class="visually-hidden">{t.chat.attach}</span></label>
+      <input id="chat-file" type="file" accept={pol.mimes.join(',')} class="visually-hidden" />
+      <label for="chat-text" class="visually-hidden">{t.chat.placeholder}</label>
+      <input id="chat-text" class="input" autocomplete="off" placeholder={t.chat.placeholder} maxlength="2000" />
+      <button class="btn btn--primary btn--sm" type="submit">{t.chat.send}</button>
+    </form>
+  </section>
+  <script>
+    import { uploadFiles, UploadError, type Strings } from '../../../scripts/direct-upload';
+    const root = document.querySelector('[data-testid=webchat]') as HTMLElement;
+    const csrf = root.dataset.csrf!;
+    const log = document.getElementById('chat-log')!;
+    const input = document.getElementById('chat-text') as HTMLInputElement;
+    const file = document.getElementById('chat-file') as HTMLInputElement;
+    let last = 0;
+    const draw = (m: any, isLast: boolean) => {
+      const d = document.createElement('div');
+      d.className = `bubble ${m.direction === 'in' ? 'me' : 'bot'}`;
+      d.textContent = m.body || (m.media ? '📎' : '');
+      log.append(d);
+      if (m.direction === 'out' && isLast && m.buttons?.length) {
+        const w = document.createElement('div'); w.className = 'chat-btns';
+        for (const b of m.buttons) {
+          const x = document.createElement('button'); x.type = 'button'; x.className = 'btn btn--secondary btn--xs'; x.textContent = b.title;
+          x.onclick = () => { w.remove(); send({ replyId: b.id, text: b.title }); };
+          w.append(x);
+        }
+        log.append(w);
+      }
+    };
+    async function poll() {
+      const r = await fetch(`/tenant/chat/messages?after=${last}`);
+      if (!r.ok) return;
+      const { messages } = await r.json();
+      if (!messages.length) return;
+      log.querySelectorAll('.chat-btns').forEach((n) => n.remove());
+      messages.forEach((m: any, i: number) => draw(m, i === messages.length - 1));
+      last = messages[messages.length - 1].id;
+      log.scrollTop = log.scrollHeight;
+    }
+    async function send(body: Record<string, unknown>) {
+      const r = await fetch('/tenant/chat/send', { method: 'POST', headers: { 'x-csrf-token': csrf, 'content-type': 'application/json' }, body: JSON.stringify(body) });
+      await poll();
+      return r.ok;
+    }
+    const strings = JSON.parse(root.dataset.duI18n!) as Strings & { rejected: string };
+    const limits = JSON.parse(root.dataset.duLimits!) as Record<string, number>;
+    const up = document.getElementById('chat-upload')!;
+    const upText = up.querySelector('span')!, upBar = up.querySelector('progress')!;
+    async function attach(f: File) {
+      up.hidden = false; up.removeAttribute('data-error'); upBar.hidden = false; upBar.value = 0;
+      try {
+        const [uploadId] = await uploadFiles({
+          kind: 'webchat', files: [f], csrf, strings, limits, maxFiles: 1,
+          onFile: (_i, s) => { upText.textContent = `${f.name} · ${s.text}`; if (s.pct !== undefined) upBar.value = Math.round(s.pct * 100); },
+        });
+        upText.textContent = strings.saving;
+        if (!(await send({ uploadId }))) throw new UploadError(strings.rejected.replace('{n}', '1'));
+        up.hidden = true;
+      } catch (e) {
+        upBar.hidden = true; up.setAttribute('data-error', '');
+        upText.textContent = e instanceof UploadError ? e.message : strings.failed;
+      }
+    }
+    document.getElementById('chat-form')!.addEventListener('submit', (e) => { e.preventDefault(); const v = input.value.trim(); if (v) { input.value = ''; send({ text: v }); } });
+    file.onchange = () => { const f = file.files?.[0]; if (!f) return; file.value = ''; void attach(f); };
+    poll(); setInterval(poll, 2000);
+  </script>
+</AppLayout>

@@ -1,0 +1,16 @@
+---
+import AppLayout from '../../../layouts/AppLayout.astro';
+import StatementView from '../../../components/StatementView.astro';
+import { z } from '../../../lib/validation';
+
+const { t, supabase } = Astro.locals;
+const id = z.uuid().safeParse(Astro.params.id);
+const { data: s } = id.success
+  ? await supabase.from('statements').select('id, period, published_at, statement_lines(id, line_date, category, description, amount_ils, document_id, property:properties(code, name))').eq('id', id.data).maybeSingle()
+  : { data: null };
+if (!s) return Astro.rewrite('/404');
+---
+<AppLayout title={t.st.title} active="statements">
+  <p><a href="/owner/statements" class="link-sm">← {t.common.back}</a></p>
+  <StatementView period={s.period} lines={(s.statement_lines ?? []) as any} pdfHref={`/owner/statements/${s.id}/pdf`} />
+</AppLayout>

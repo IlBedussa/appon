@@ -1,0 +1,53 @@
+---
+/*
+ * !!! SOLO PER TEST LOCALE — NON PUBBLICARE !!!
+ * Striscia con i loghi ufficiali di autorità israeliane, richiesta da David per test locali.
+ * I loghi NON possono essere pubblicati senza l'autorizzazione scritta delle autorità:
+ * potrebbero far credere a un'approvazione, certificazione o partnership che NON esiste.
+ * Il componente non rende NULLA se il flag SHOW_TEST_LOGOS è spento (default in produzione),
+ * e i file immagine vengono letti dal disco solo a flag acceso (inseriti come data URI),
+ * quindi non finiscono mai in dist/ in una build normale. Vedi src/config/flags.ts.
+ * Didascalie neutre: "Registrata presso" solo dove è vero (Corporations Authority, società registrata).
+ */
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { SHOW_TEST_LOGOS } from '../config/flags';
+import T from './T.astro';
+import { t, type Locale } from '../i18n/config';
+interface Props { lang: Locale }
+const { lang } = Astro.props;
+const tr = t(lang).trust;
+
+let logos: { src: string; alt: string; caption: string }[] = [];
+if (SHOW_TEST_LOGOS) {
+  const dir = join(process.cwd(), 'test-assets', 'authority-logos');
+  const uri = (f: string, mime: string) => `data:${mime};base64,${readFileSync(join(dir, f)).toString('base64')}`;
+  logos = [
+    { src: uri('israel-corporations-authority.png', 'image/png'), alt: 'Israel Corporations Authority', caption: tr.logos.ica },
+    { src: uri('israel-tax-authority.svg', 'image/svg+xml'), alt: 'Israel Tax Authority', caption: tr.logos.tax },
+    { src: uri('privacy-protection-authority.svg', 'image/svg+xml'), alt: 'Privacy Protection Authority', caption: tr.logos.privacy },
+  ];
+}
+---
+{SHOW_TEST_LOGOS && (
+  <div class="test-logos" data-test-only="authority-logos">
+    <p class="test-marker" lang="en" dir="ltr">⚠ {tr.testMarker}</p>
+    <ul>
+      {logos.map((l) => (
+        <li>
+          <img src={l.src} alt={l.alt} loading="lazy" decoding="async" />
+          <span><T text={l.caption} /></span>
+        </li>
+      ))}
+    </ul>
+    <p class="test-note">{tr.logosNote}</p>
+  </div>
+)}
+<style>
+  .test-logos { margin-block-start: var(--sp-6); border: 2px dashed #dc2626; border-radius: var(--r-lg); padding: var(--sp-4) var(--sp-5); background: #fff; position: relative; }
+  .test-marker { position: absolute; inset-block-start: -12px; inset-inline-start: var(--sp-4); margin: 0; background: #dc2626; color: #fff; font-size: var(--fs-xs); font-weight: 700; padding: 2px 10px; border-radius: var(--r-pill); letter-spacing: .03em; }
+  ul { list-style: none; display: grid; gap: var(--sp-5); grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); align-items: center; margin-block-start: var(--sp-2); }
+  li { display: grid; justify-items: center; gap: var(--sp-2); text-align: center; font-size: var(--fs-xs); color: var(--c-muted); }
+  img { block-size: 40px; inline-size: auto; max-inline-size: 180px; object-fit: contain; filter: grayscale(1); opacity: .85; }
+  .test-note { margin: var(--sp-4) 0 0; font-size: var(--fs-xs); color: #b91c1c; text-align: center; }
+</style>

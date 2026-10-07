@@ -1,0 +1,48 @@
+---
+// Secondo fattore (TOTP) dopo il login: porta la sessione a livello aal2.
+import AuthLayout from '../layouts/AuthLayout.astro';
+import Field from '../components/Field.astro';
+import Csrf from '../components/Csrf.astro';
+import { totpCode } from '../lib/validation';
+import { hit } from '../lib/ratelimit';
+import { logEvent } from '../lib/audit';
+import { homeFor, safeNext } from '../lib/session';
+
+const { t, supabase, user, profile, aal } = Astro.locals;
+const next = safeNext(Astro.url.searchParams.get('next'), homeFor(profile?.role));
+if (aal.current === 'aal2' || aal.next !== 'aal2') return Astro.redirect(next, 303);
+let error = '';
+
+if (Astro.request.method === 'POST') {
+  const fd = await Astro.request.formData();
+  const code = totpCode.safeParse(fd.get('code'));
+  if (!(await hit('mfa', user!.id, 10, 900))) {
+    error = t.auth.rateLimited;
+    Astro.response.status = 429;
+  } else if (!code.success) {
+    error = t.auth.mfaInvalid;
+  } else {
+    const { data: factors } = await supabase.auth.mfa.listFactors();
+    const factor = factors?.totp?.find((f) => f.status === 'verified');
+    const { error: vErr } = factor ? await supabase.auth.mfa.challengeAndVerify({ factorId: factor.id, code: code.data }) : { error: new Error('no factor') };
+    if (vErr) {
+      error = t.auth.mfaInvalid;
+      Astro.response.status = 401;
+    } else {
+      await logEvent(supabase, 'auth.mfa_verified', 'auth', user!.id);
+      return Astro.redirect(next, 303);
+    }
+  }
+}
+---
+<AuthLayout title={t.auth.mfaTitle}>
+  <h1>{t.auth.mfaTitle}</h1>
+  <p class="sub">{t.auth.mfaSub}</p>
+  {error && <p class="form-status" data-type="error" role="alert">{error}</p>}
+  <form method="post">
+    <Csrf />
+    <Field name="code" label={t.auth.code} required autocomplete="one-time-code" inputmode="numeric" pattern="[0-9]{6}" maxlength={6} class="code-field" />
+    <button type="submit" class="btn btn--primary">{t.auth.verify}</button>
+  </form>
+  <form method="post" action="/logout" class="auth-links"><Csrf /><button type="submit" class="link-btn">{t.auth.signOut}</button></form>
+</AuthLayout>

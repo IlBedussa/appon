@@ -1,0 +1,54 @@
+---
+// Back-office: panoramica operativa e attività recenti dal log di audit.
+import AppLayout from '../../layouts/AppLayout.astro';
+import Icon from '../../components/Icon.astro';
+import Pill from '../../components/Pill.astro';
+import SourceBadge from '../../components/SourceBadge.astro';
+import { dateTime, date } from '../../lib/format';
+
+const { t, supabase, intl } = Astro.locals;
+const c = (table: string, f?: (q: any) => any) => { let q = supabase.from(table).select('id', { count: 'exact', head: true }); if (f) q = f(q); return q; };
+const [props, owners, tenants, open, pending, drafts, recent, reqs] = await Promise.all([
+  c('properties'), c('owners'), c('tenants'),
+  c('maintenance_requests', (q) => q.not('status', 'in', '(closed,cancelled)')),
+  c('quotes', (q) => q.eq('status', 'pending')),
+  c('statements', (q) => q.eq('status', 'draft')),
+  supabase.from('audit_log').select('id, action, entity, created_at, actor_role').order('created_at', { ascending: false }).limit(12),
+  supabase.from('maintenance_requests').select('id, ref, title, source, status, priority, created_at, property:properties(code)').not('status', 'in', '(closed,cancelled)').order('created_at', { ascending: false }).limit(8),
+]);
+const kpis = [
+  ['key', t.admin.kpiProps, props.count, '/admin/properties'], ['user', t.admin.kpiOwners, owners.count, '/admin/owners'],
+  ['users', t.admin.kpiTenants, tenants.count, '/admin/tenants'], ['tool', t.admin.kpiOpen, open.count, '/admin/maintenance'],
+  ['wallet', t.admin.kpiPending, pending.count, '/admin/maintenance?status=quote_pending'], ['doc', t.admin.kpiDrafts, drafts.count, '/admin/statements'],
+] as const;
+---
+<AppLayout title={t.admin.title} active="overview">
+  <div class="kpis">
+    {kpis.map(([icon, label, n, href]) => (
+      <a class="kpi" href={href}>
+        <p class="kpi-label"><Icon name={icon} /> {label}</p>
+        <p class="kpi-value">{n ?? 0}</p>
+      </a>
+    ))}
+  </div>
+  <div class="grid-2">
+    <section class="dcard" aria-labelledby="h-open">
+      <div class="dcard-head"><strong id="h-open">{t.admin.kpiOpen}</strong><a class="link-sm" href="/admin/maintenance">{t.owner.seeAll} <Icon name="arrow" /></a></div>
+      <ul class="req-list">
+        {(reqs.data ?? []).map((r) => (
+          <li><a class="req" href={`/admin/maintenance/${r.id}`}>
+            <span class="req-top"><strong>{r.title} <SourceBadge source={(r as any).source} /></strong><Pill tone={r.priority === 'urgent' ? 'urgent' : 'neutral'}>{(t.priority as Record<string, string>)[r.priority]}</Pill></span>
+            <small>R-{r.ref} · {(r.property as any)?.code} · {date(r.created_at, intl)}</small>
+            <span class="req-status">{(t.maintStatus as Record<string, string>)[r.status]}</span>
+          </a></li>
+        ))}
+      </ul>
+    </section>
+    <section class="dcard" aria-labelledby="h-recent">
+      <div class="dcard-head"><strong id="h-recent">{t.admin.recent}</strong><a class="link-sm" href="/admin/audit">{t.nav.audit} <Icon name="arrow" /></a></div>
+      <ul class="event-list">
+        {(recent.data ?? []).map((e) => <li><span><code class="ltr">{e.action}</code> · {e.actor_role ?? '—'}</span><small>{dateTime(e.created_at, intl)}</small></li>)}
+      </ul>
+    </section>
+  </div>
+</AppLayout>

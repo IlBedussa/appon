@@ -1,0 +1,42 @@
+---
+import Icon from '../Icon.astro';
+import T from '../T.astro';
+import PageHero from '../PageHero.astro';
+import CtaBand from '../CtaBand.astro';
+import { t, type Locale } from '../../i18n/config';
+interface Props { lang: Locale }
+const { lang } = Astro.props;
+const d = t(lang);
+const p = d.pages.faq;
+// Dati strutturati FAQPage (schema.org) generati dagli stessi testi della pagina.
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'FAQPage',
+  inLanguage: lang,
+  mainEntity: p.groups.flatMap((g) => g.items.map((i) => ({
+    '@type': 'Question', name: i.q, acceptedAnswer: { '@type': 'Answer', text: i.a },
+  }))),
+};
+---
+<PageHero eyebrow={p.eyebrow} title={p.h1} lead={p.lead} />
+<section class="section">
+  <div class="container"><div class="faq-layout">
+    {p.groups.map((g) => (
+      <section class="faq-group">
+        <h2>{g.title}</h2>
+        {g.items.map((i) => (
+          <details class="faq-item">
+            <summary>{i.q} <Icon name="plus" /></summary>
+            <p><T text={i.a} /></p>
+          </details>
+        ))}
+      </section>
+    ))}
+  </div></div>
+</section>
+<CtaBand lang={lang} />
+<script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+<style>
+  .faq-layout { display: grid; gap: var(--sp-7); max-inline-size: 860px; }
+  .faq-group h2 { font-size: var(--fs-xl); margin-block-end: var(--sp-2); }
+</style>

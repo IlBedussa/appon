@@ -1,0 +1,5 @@
+---
+// La home reindirizza all'area del ruolo (gestito dal middleware).
+import { homeFor } from '../lib/session';
+return Astro.redirect(homeFor(Astro.locals.profile?.role), 303);
+---

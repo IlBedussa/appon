@@ -1,0 +1,32 @@
+---
+// Dettaglio ispezione + conferma di presa visione (funzione DB tracciata; nessuna scrittura diretta).
+import AppLayout from '../../../layouts/AppLayout.astro';
+import InspectionView from '../../../components/InspectionView.astro';
+import InspectionAck from '../../../components/InspectionAck.astro';
+import { ix } from '../../../i18n/inspections';
+import { loadInspection } from '../../../lib/inspections';
+import { setFlash } from '../../../lib/flash';
+import { z } from '../../../lib/validation';
+
+const { supabase, lang, t } = Astro.locals;
+const x = ix(lang);
+const id = z.uuid().safeParse(Astro.params.id);
+if (!id.success) return Astro.rewrite('/404');
+const self = `/tenant/inspections/${id.data}`;
+if (Astro.request.method === 'POST') {
+  const c = z.string().trim().max(1000).safeParse((await Astro.request.formData()).get('comment') ?? '');
+  const { error } = c.success ? await supabase.rpc('acknowledge_inspection', { p_inspection: id.data, p_comment: c.data }) : { error: true };
+  setFlash(Astro.cookies, error ? 'error' : 'success', error ? t.common.error : x.ackDone);
+  return Astro.redirect(self, 303);
+}
+const d = await loadInspection(supabase, id.data);
+if (!d) return Astro.rewrite('/404');
+---
+<AppLayout title={x.kinds[d.kind]} active="inspections">
+  <p><a href="/tenant/inspections" class="link-sm">← {t.common.back}</a></p>
+  <div class="stack-sm">
+    <InspectionView d={d} pdfHref={`${self}/pdf`}>
+      <InspectionAck slot="actions" d={d} />
+    </InspectionView>
+  </div>
+</AppLayout>

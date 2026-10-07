@@ -1,0 +1,75 @@
+---
+import Icon from '../Icon.astro';
+import T from '../T.astro';
+import PageHero from '../PageHero.astro';
+import MaintenanceTimeline from '../MaintenanceTimeline.astro';
+import CtaBand from '../CtaBand.astro';
+import { t, type Locale } from '../../i18n/config';
+interface Props { lang: Locale }
+const { lang } = Astro.props;
+const d = t(lang);
+const p = d.pages.how;
+const monthIcons = ['wallet', 'doc', 'chart', 'arrow'];
+---
+<PageHero eyebrow={p.eyebrow} title={p.h1} lead={p.lead} />
+
+<section class="section">
+  <div class="container">
+    <div class="section-head"><h2>{p.onboardingTitle}</h2></div>
+    <ol class="flow">
+      {p.onboarding.map((s, i) => (
+        <li class="flow__step">
+          <span class="flow__n" aria-hidden="true">{i + 1}</span>
+          <div class="card flow__card">
+            <h3>{s.title}</h3>
+            <p>{s.text}</p>
+            <p class="flow__out"><Icon name="doc" /> <span><T text={s.out} /></span></p>
+          </div>
+        </li>
+      ))}
+    </ol>
+  </div>
+</section>
+
+<section class="section section--surface">
+  <div class="container">
+    <div class="section-head"><h2>{p.monthlyTitle}</h2></div>
+    <div class="grid grid--4">
+      {p.monthly.map((m, i) => (
+        <div class="card">
+          <span class="icon-badge"><Icon name={monthIcons[i]} /></span>
+          <h3>{m.title}</h3>
+          <p><T text={m.text} /></p>
+        </div>
+      ))}
+    </div>
+  </div>
+</section>
+
+<section class="section" id="maintenance">
+  <div class="container split">
+    <div>
+      <h2>{p.maintenanceTitle}</h2>
+      <p class="lead">{p.maintenanceLead}</p>
+      <div class="card card--flat rules">
+        <h3><Icon name="shield" /> {p.rulesTitle}</h3>
+        <ul class="checklist">{p.rules.map((r) => <li><Icon name="check" /><span><T text={r} /></span></li>)}</ul>
+      </div>
+    </div>
+    <MaintenanceTimeline lang={lang} />
+  </div>
+</section>
+
+<CtaBand lang={lang} />
+<style>
+  .flow { list-style: none; display: grid; gap: var(--sp-4); max-inline-size: 820px; }
+  .flow__step { display: grid; grid-template-columns: 44px 1fr; gap: var(--sp-4); position: relative; }
+  .flow__step:not(:last-child)::before { content: ''; position: absolute; inset-inline-start: 21px; inset-block: 48px calc(-1 * var(--sp-4)); inline-size: 2px; background: var(--c-primary-100); }
+  .flow__n { display: grid; place-items: center; inline-size: 44px; block-size: 44px; border-radius: 50%; background: var(--c-primary); color: #fff; font-weight: 700; }
+  .flow__card p { margin-block-end: var(--sp-3); }
+  .flow__out { display: flex; gap: var(--sp-2); align-items: flex-start; font-size: var(--fs-sm); font-weight: 600; color: var(--c-secondary) !important; background: var(--c-secondary-50); padding: var(--sp-2) var(--sp-3); border-radius: var(--r-sm); margin: 0 !important; }
+  .flow__out :global(.icon) { margin-block-start: .15em; }
+  .lead { font-size: var(--fs-lg); color: var(--c-ink-2); }
+  .rules h3 { display: flex; align-items: center; gap: var(--sp-2); }
+  .rules h3 :global(.icon) { color: var(--c-primary); }
+</style>

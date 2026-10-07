@@ -1,0 +1,80 @@
+---
+// Dettaglio manutenzione per il proprietario con approvazione/rifiuto del preventivo.
+// La decisione passa SOLO dalla funzione DB public.decide_quote (verifica proprietà, stato, audit).
+import AppLayout from '../../../layouts/AppLayout.astro';
+import MaintenanceDetail from '../../../components/MaintenanceDetail.astro';
+import Money from '../../../components/Money.astro';
+import Icon from '../../../components/Icon.astro';
+import Csrf from '../../../components/Csrf.astro';
+import Field from '../../../components/Field.astro';
+import Pill from '../../../components/Pill.astro';
+import { z, formToObject } from '../../../lib/validation';
+import { setFlash } from '../../../lib/flash';
+import { fill } from '../../../i18n';
+import { dateTime } from '../../../lib/format';
+
+const { t, supabase, intl } = Astro.locals;
+const id = z.uuid().safeParse(Astro.params.id);
+if (!id.success) return Astro.rewrite('/404');
+
+if (Astro.request.method === 'POST') {
+  const p = z.object({ quote: z.uuid(), decision: z.enum(['approve', 'reject']), note: z.string().trim().max(1000).optional() }).safeParse(formToObject(await Astro.request.formData()));
+  if (!p.success) setFlash(Astro.cookies, 'error', t.common.invalid);
+  else {
+    const { error } = await supabase.rpc('decide_quote', { p_quote: p.data.quote, p_decision: p.data.decision, p_note: p.data.note || null });
+    if (error) setFlash(Astro.cookies, 'error', error.message.includes('already') ? t.maint.alreadyDecided : t.common.forbidden);
+    else setFlash(Astro.cookies, 'success', p.data.decision === 'approve' ? t.maint.approved : t.maint.rejected);
+  }
+  return Astro.redirect(`/owner/maintenance/${id.data}`, 303);
+}
+
+const [{ data: req }, { data: photos }, { data: events }, { data: quotes }] = await Promise.all([
+  supabase.from('maintenance_requests').select('id, ref, title, source, availability, emergency, description, priority, status, created_at, scheduled_for, property:properties(code, name, owner:owners(approval_limit_ils))').eq('id', id.data).maybeSingle(),
+  supabase.from('maintenance_photos').select('id, media_type, mime_type').eq('request_id', id.data).order('created_at'),
+  supabase.from('maintenance_events').select('id, status, note, created_at').eq('request_id', id.data).order('created_at'),
+  supabase.from('quotes').select('id, supplier, items, total_ils, status, decided_at, decision_note, created_at').eq('request_id', id.data).order('created_at', { ascending: false }),
+]);
+if (!req) return Astro.rewrite('/404');
+const limit = (req.property as any)?.owner?.approval_limit_ils;
+---
+<AppLayout title={t.maint.title} active="maintenance">
+  <p><a href="/owner/maintenance" class="link-sm">← {t.common.back}</a></p>
+  <div class="grid-2 req-detail">
+    <MaintenanceDetail req={req as any} photos={photos ?? []} events={events ?? []} />
+    <div>
+      {(quotes ?? []).length === 0 ? <div class="dcard"><p class="empty">{t.maint.noQuote}</p></div> : quotes!.map((q) => (
+        <section class:list={['quote dcard', { decided: q.status !== 'pending' }]} aria-labelledby={`q-${q.id}`} data-testid="quote">
+          <div class="quote-head"><Icon name="doc" /><span><strong id={`q-${q.id}`}>{t.maint.quote}</strong><small>{t.maint.supplier}: {q.supplier}</small></span>
+            <span class="ms-auto"><Pill tone={q.status === 'approved' ? 'ok' : q.status === 'rejected' ? 'urgent' : 'warn'}>{(t.quoteStatus as Record<string, string>)[q.status]}</Pill></span></div>
+          <ul class="quote-rows">
+            {(q.items as { label: string; amount: number }[]).map((it) => <li><span>{it.label}</span><Money v={it.amount} /></li>)}
+            <li class="quote-total"><span>{t.common.total}</span><Money v={q.total_ils} /></li>
+          </ul>
+          {limit != null && <p class="q-rule"><Icon name="info" /> {fill(t.maint.limit, { a: new Intl.NumberFormat(intl, { style: 'currency', currency: 'ILS', maximumFractionDigits: 0 }).format(limit) })}</p>}
+          {q.status === 'pending' ? (
+            <div class="quote-actions">
+              <form method="post" class="inline-form">
+                <Csrf /><input type="hidden" name="quote" value={q.id} /><input type="hidden" name="decision" value="approve" />
+                <button type="submit" class="btn btn--ok" data-testid="approve-quote"><Icon name="check" /> {t.maint.approve} · <Money v={q.total_ils} /></button>
+              </form>
+              <details class="confirm-box">
+                <summary class="btn btn--secondary btn--sm"><Icon name="x" /> {t.maint.reject}</summary>
+                <form method="post" class="stack-sm">
+                  <Csrf /><input type="hidden" name="quote" value={q.id} /><input type="hidden" name="decision" value="reject" />
+                  <p><strong>{t.maint.confirmReject}</strong></p>
+                  <Field name="note" label={t.maint.note} maxlength={1000} id={`note-r-${q.id}`} />
+                  <button type="submit" class="btn btn--danger btn--sm">{t.common.confirm}</button>
+                </form>
+              </details>
+            </div>
+          ) : (
+            <p class:list={['q-result', q.status === 'approved' ? 'ok' : 'no']}>
+              <Icon name={q.status === 'approved' ? 'check' : 'x'} /> {q.decision_note?.startsWith('auto-approved') ? t.pri.autoApproved : fill(t.maint.decidedBy, { d: dateTime(q.decided_at, intl) })}{q.decision_note && !q.decision_note.startsWith('auto-approved') ? ` · ${q.decision_note}` : ''}
+            </p>
+          )}
+          <p class="q-rule"><Icon name="shield" /> {t.maint.rule}</p>
+        </section>
+      ))}
+    </div>
+  </div>
+</AppLayout>

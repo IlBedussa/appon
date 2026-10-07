@@ -1,0 +1,92 @@
+---
+// Pagina città: dati ufficiali con fonte, quartieri, esigenze locali, copertura (segnaposto) e CTA stima.
+import Icon from '../Icon.astro';
+import T from '../T.astro';
+import PageHero from '../PageHero.astro';
+import CtaBand from '../CtaBand.astro';
+import Sources from '../Sources.astro';
+import TierCards from '../offer/TierCards.astro';
+import { cityData, foreignBuyers2025, rentQ1_2026 } from '../../data/market';
+import { url, tx, langMeta, type Locale, type CityKey } from '../../i18n/config';
+interface Props { lang: Locale; city: CityKey }
+const { lang, city } = Astro.props;
+const x = tx(lang);
+const c = x.cities;
+const it = c.items[city];
+const d = cityData[city];
+const fb = foreignBuyers2025[city];
+const nf = new Intl.NumberFormat(langMeta[lang].intl, { maximumFractionDigits: 0 });
+const fill = (s: string, v: Record<string, string>) => s.replace(/\{(\w+)\}/g, (_, k) => v[k] ?? '');
+const rent = d.rent ?? rentQ1_2026.districts[d.district];
+const rentLabel = d.rent ? c.avgRent : fill(c.avgRentDistrict, { district: (c.districts as Record<string, string>)[d.district] ?? d.district });
+const estUrl = `${url(lang, 'rent')}?city=${city}`;
+---
+<PageHero eyebrow={c.eyebrow} title={it.h1} lead={it.lead}>
+  <div class="btn-row" slot="actions">
+    <a class="btn btn--primary" href={estUrl}>{fill(c.estimateCta, { city: it.name })} <Icon name="arrow" /></a>
+    <a class="btn btn--secondary" href={url(lang, 'pricing')}>{x.common.seePricing}</a>
+  </div>
+  <div class="city-stats" slot="visual">
+    <div class="city-stat card" data-reveal>
+      <p class="city-stat__l">{rentLabel}</p>
+      <p class="city-stat__v tnum" dir="ltr">₪{nf.format(rent)}</p>
+      {!d.rent && <p class="city-stat__n">{c.notPublished}</p>}
+    </div>
+    <div class="city-stat card" data-reveal>
+      <p class="city-stat__l">{c.foreignBuyers}</p>
+      <p class="city-stat__v tnum">{fb != null ? nf.format(fb) : '—'}</p>
+      {fb == null && <p class="city-stat__n">{c.notPublished}</p>}
+    </div>
+    <Sources lang={lang} ids={['cbsRentQ1_2026', 'mofForeignBuyers2025']} compact />
+  </div>
+</PageHero>
+
+<section class="section">
+  <div class="container split">
+    <div data-reveal>
+      <p class="lead-text">{it.intro}</p>
+      <p class="notice" role="note"><Icon name="info" /><span><T text={fill(c.coverage, { city: it.name })} /></span></p>
+    </div>
+    <div class="card local" data-reveal>
+      <h2>{c.localTitle}</h2>
+      <ul class="checklist">{it.local.map((l) => <li><Icon name="check" /><span>{l}</span></li>)}</ul>
+    </div>
+  </div>
+</section>
+
+<section class="section section--surface">
+  <div class="container">
+    <div class="section-head" data-reveal><h2>{c.neighborhoodsTitle}</h2></div>
+    <ul class="nbs">
+      {it.neighborhoods.map((n, i) => (
+        <li class="card nb" data-reveal style={`transition-delay:${i * 50}ms`}>
+          <h3><Icon name="pin" /> {n.name}</h3>
+          <p>{n.text}</p>
+        </li>
+      ))}
+    </ul>
+  </div>
+</section>
+
+<section class="section">
+  <div class="container">
+    <TierCards lang={lang} compact />
+  </div>
+</section>
+
+<CtaBand lang={lang} />
+<style>
+  .city-stats { display: grid; gap: var(--sp-3); }
+  .city-stat { padding: var(--sp-5); }
+  .city-stat__l { margin: 0; font-size: var(--fs-sm); color: var(--c-muted); font-weight: 600; }
+  .city-stat__v { margin: 4px 0 0; font-size: var(--fs-3xl); font-weight: 700; color: var(--c-primary); line-height: 1.1; text-align: start; }
+  .city-stat__n { margin: 4px 0 0; font-size: var(--fs-xs); color: var(--c-muted); }
+  .lead-text { font-size: var(--fs-lg); color: var(--c-ink-2); }
+  .local h2 { font-size: var(--fs-xl); }
+  .nbs { list-style: none; padding: 0; display: grid; gap: var(--sp-4); }
+  @media (min-width: 720px) { .nbs { grid-template-columns: 1fr 1fr; } }
+  @media (min-width: 1100px) { .nbs { grid-template-columns: repeat(3, 1fr); } }
+  .nb h3 { display: flex; align-items: center; gap: 8px; font-size: var(--fs-md); margin: 0 0 6px; }
+  .nb h3 :global(.icon) { color: var(--c-primary); flex: none; }
+  .nb p { margin: 0; color: var(--c-ink-2); font-size: var(--fs-sm); }
+</style>

@@ -1,0 +1,51 @@
+---
+// Dettaglio richiesta di manutenzione: timeline, descrizione, foto (servite da /files/photo/:id), eventi.
+import Timeline from './Timeline.astro';
+import Pill from './Pill.astro';
+import SourceBadge from './SourceBadge.astro';
+import { date, dateTime } from '../lib/format';
+import { fill } from '../i18n';
+interface Props {
+  req: { source?: string | null; availability?: string | null; emergency?: string | null; id: string; ref: number; title: string; description: string; priority: string; status: string; created_at: string; scheduled_for?: string | null; property?: { code: string; name: string } | null };
+  photos: { id: string; media_type?: string; mime_type?: string }[];
+  events: { id: string; status: string | null; note: string | null; created_at: string }[];
+}
+const { req, photos, events } = Astro.props;
+const { t, intl } = Astro.locals;
+// Le note generate dal DB sono in inglese: si traducono quelle note
+const noteText = (n: string) => n.startsWith('quote auto-approved') ? t.pri.autoApproved
+  : n.startsWith('quote approved by owner') ? `${t.maint.quote}: ${t.quoteStatus.approved}${n.slice(23)}`
+  : n.startsWith('quote rejected by owner') ? `${t.maint.quote}: ${t.quoteStatus.rejected}${n.slice(23)}` : n;
+---
+<div class="dcard">
+  <div class="dcard-head">
+    <span><strong>{req.title}</strong><small>R-{req.ref} · {req.property ? `${req.property.code} · ${req.property.name}` : ''} · {fill(t.maint.opened, { d: date(req.created_at, intl) })}</small></span>
+    <span class="row-actions"><SourceBadge source={req.source} /><Pill tone={req.priority === 'urgent' ? 'urgent' : 'neutral'}>{(t.priority as Record<string, string>)[req.priority]}</Pill></span>
+  </div>
+  <Timeline status={req.status} />
+  {req.scheduled_for && <p class="small"><strong>{t.admin.mt.schedule}:</strong> {date(req.scheduled_for, intl)}</p>}
+  {req.description && <p class="pre">{req.description}</p>}
+  {req.emergency && <p><Pill tone="urgent">⚠ EMERGENCY · {req.emergency}</Pill></p>}
+  {photos.length > 0 && (
+    <>
+      <h3 class="small">{t.pri.media}</h3>
+      <ul class="photo-grid" data-testid="media-grid">
+        {photos.map((p, i) => p.media_type === 'video' ? (
+          <li><video controls preload="metadata" width="280" height="210" aria-label={`${t.pri.video} ${i + 1} · R-${req.ref}`}><source src={`/files/photo/${p.id}`} type={p.mime_type} /></video></li>
+        ) : (
+          <li><a href={`/files/photo/${p.id}`}><img src={`/files/photo/${p.id}`} alt={`${t.maint.photos} ${i + 1} · R-${req.ref}`} loading="lazy" width="280" height="210" /></a></li>
+        ))}
+      </ul>
+    </>
+  )}
+  {events.length > 0 && (
+    <>
+      <h3 class="small">{t.maint.timeline}</h3>
+      <ul class="event-list">
+        {events.map((e) => (
+          <li><span>{e.status ? (t.maintStatus as Record<string, string>)[e.status] : t.maint.events.note}{e.note ? ` · ${noteText(e.note)}` : ''}</span><small>{dateTime(e.created_at, intl)}</small></li>
+        ))}
+      </ul>
+    </>
+  )}
+</div>
