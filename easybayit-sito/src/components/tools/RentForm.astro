@@ -1,0 +1,174 @@
+---
+// Modulo di stima affitto (pagina /rent-estimate/). Calcolo via API server-side con ripiego nel browser.
+// Autocompletamento vie: /api/streets/ (elenco ufficiale data.gov.il, solo ebraico) tramite <datalist>.
+import Icon from '../Icon.astro';
+import { tx, langMeta, type Locale } from '../../i18n/config';
+import { cityNames, districtNames, otherCity, israelName } from '../../data/cityNames';
+import { cityData, rentQ1_2026 } from '../../data/market';
+interface Props { lang: Locale; city?: string }
+const { lang, city: preset = 'jerusalem' } = Astro.props;
+const r = tx(lang).tools.rent;
+const focus = ['jerusalem', 'beit-shemesh', 'raanana', 'netanya', 'tel-aviv'];
+const others = Object.keys(cityNames).filter((k) => !focus.includes(k)).sort((a, b) => cityNames[a][lang].localeCompare(cityNames[b][lang], langMeta[lang].intl));
+const roomsOpts = [1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5, 5.5, 6];
+// Dati per lo script client: nomi località, distretti, codici CBS per le vie.
+const ctx = {
+  intl: langMeta[lang].intl,
+  cities: Object.fromEntries(Object.entries(cityNames).map(([k, v]) => [k, { name: v[lang], cbs: v.cbs ?? null, district: cityData[k]?.district ?? null, published: k in rentQ1_2026.cities }])),
+  districts: Object.fromEntries(Object.entries(districtNames).map(([k, v]) => [k, v[lang]])),
+  other: israelName[lang],
+  s: r,
+};
+---
+<div class="rent-tool" data-rent-tool data-ctx={JSON.stringify(ctx)}>
+  <form class="card rent-form" novalidate>
+    <h2 class="rent-form__title">{r.formTitle}</h2>
+    <div class="rent-form__grid">
+      <div class="field">
+        <label for="rf-city">{r.city}</label>
+        <select class="input select" id="rf-city" name="city" required>
+          <optgroup label="Easybayit">
+            {focus.map((k) => <option value={k} selected={k === preset}>{cityNames[k][lang]}</option>)}
+          </optgroup>
+          <optgroup label="CBS">
+            {others.map((k) => <option value={k}>{cityNames[k][lang]}</option>)}
+          </optgroup>
+          <option value="other">{otherCity[lang]}</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="rf-nb">{r.neighborhood}</label>
+        <input class="input" id="rf-nb" name="neighborhood" autocomplete="off" />
+      </div>
+      <div class="field field--wide">
+        <label for="rf-street">{r.street}</label>
+        <input class="input" id="rf-street" name="street" list="rf-streets" autocomplete="off" aria-describedby="rf-street-help" />
+        <datalist id="rf-streets"></datalist>
+        <small id="rf-street-help" class="help">{r.streetHelp}</small>
+      </div>
+      <div class="field">
+        <label for="rf-rooms">{r.rooms}</label>
+        <select class="input select" id="rf-rooms" name="rooms" required>
+          {roomsOpts.map((n) => <option value={n} selected={n === 3.5}>{new Intl.NumberFormat(langMeta[lang].intl).format(n)}</option>)}
+        </select>
+      </div>
+      <div class="field">
+        <label for="rf-sqm">{r.sqm}</label>
+        <input class="input" id="rf-sqm" name="sqm" type="number" inputmode="numeric" min="15" max="600" value="90" />
+      </div>
+      <div class="field">
+        <label for="rf-floor">{r.floor}</label>
+        <input class="input" id="rf-floor" name="floor" type="number" inputmode="numeric" min="-1" max="60" value="2" />
+      </div>
+      <fieldset class="field">
+        <legend>{r.condition}</legend>
+        <div class="rf-seg">
+          {(['renovated', 'good', 'needs-work'] as const).map((c) => (
+            <label><input type="radio" name="condition" value={c} checked={c === 'good'} /><span>{r.conditions[c]}</span></label>
+          ))}
+        </div>
+      </fieldset>
+      <fieldset class="field field--wide">
+        <legend>{r.extras}</legend>
+        <div class="rf-chips">
+          {(['elevator', 'parking', 'mamad', 'balcony'] as const).map((k) => (
+            <label class="rf-chip"><input type="checkbox" name={k} /><span><Icon name="check" /> {r[k]}</span></label>
+          ))}
+        </div>
+      </fieldset>
+    </div>
+    <p class="field-error" role="alert" data-err></p>
+    <button class="btn btn--primary rent-form__submit" type="submit" data-label={r.submit} data-busy={r.calculating}>{r.submit} <Icon name="arrow" /></button>
+  </form>
+  <section class="card rent-result" aria-live="polite" aria-busy="false" tabindex="-1" aria-label={r.resultTitle}>
+    <div class="rent-result__empty">
+      <Icon name="chart" />
+      <p>{r.lead}</p>
+    </div>
+  </section>
+</div>
+
+<script>
+  import { requestEstimate, renderResult } from '../../lib/rent/client';
+  document.querySelectorAll<HTMLElement>('[data-rent-tool]').forEach((root) => {
+    const ctx = JSON.parse(root.dataset.ctx!);
+    const form = root.querySelector('form')!;
+    const out = root.querySelector<HTMLElement>('.rent-result')!;
+    const err = form.querySelector<HTMLElement>('[data-err]')!;
+    const btn = form.querySelector<HTMLButtonElement>('.rent-form__submit')!;
+    const street = form.querySelector<HTMLInputElement>('#rf-street')!;
+    const list = form.querySelector<HTMLDataListElement>('#rf-streets')!;
+    const citySel = form.querySelector<HTMLSelectElement>('#rf-city')!;
+
+    // Precompila da query string (?city=netanya) — usato dai link delle pagine città.
+    const qc = new URLSearchParams(location.search).get('city');
+    if (qc && [...citySel.options].some((o) => o.value === qc)) citySel.value = qc;
+
+    // Autocompletamento vie (debounce 250ms). Se l'API non risponde, resta l'inserimento libero.
+    let timer: number | undefined;
+    street.addEventListener('input', () => {
+      clearTimeout(timer);
+      const code = ctx.cities[citySel.value]?.cbs;
+      const q = street.value.trim();
+      if (!code || q.length < 2) return;
+      timer = window.setTimeout(async () => {
+        try {
+          const r = await fetch(`/api/streets/?city=${code}&q=${encodeURIComponent(q)}`);
+          const data = await r.json();
+          list.replaceChildren(...(data.streets as string[]).map((s) => Object.assign(document.createElement('option'), { value: s })));
+        } catch { /* nessun suggerimento */ }
+      }, 250);
+    });
+    citySel.addEventListener('change', () => list.replaceChildren());
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fd = new FormData(form);
+      const input: Record<string, unknown> = Object.fromEntries(fd.entries());
+      for (const k of ['elevator', 'parking', 'mamad', 'balcony']) input[k] = fd.has(k);
+      err.textContent = '';
+      btn.disabled = true; btn.firstChild!.textContent = btn.dataset.busy + ' ';
+      out.setAttribute('aria-busy', 'true');
+      const res = await requestEstimate(input);
+      btn.disabled = false; btn.firstChild!.textContent = btn.dataset.label + ' ';
+      out.setAttribute('aria-busy', 'false');
+      if (!res) { err.textContent = ctx.s.error; return; }
+      const c = ctx.cities[citySel.value];
+      out.innerHTML = renderResult(res, ctx.s, {
+        intl: ctx.intl,
+        place: c?.name ?? ctx.other,
+        districtName: c?.district ? ctx.districts[c.district] : '',
+      });
+      out.classList.add('has-result');
+      if (window.matchMedia('(max-width: 1023px)').matches) out.focus({ preventScroll: false });
+      document.dispatchEvent(new CustomEvent('rent:estimated', { detail: res.est }));
+    });
+  });
+</script>
+
+<style>
+  .rent-tool { display: grid; gap: var(--sp-5); align-items: start; }
+  @media (min-width: 1024px) { .rent-tool { grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); } .rent-result { position: sticky; inset-block-start: calc(var(--header-h) + var(--sp-4)); } }
+  .rent-form__title { font-size: var(--fs-xl); margin-block-end: var(--sp-4); }
+  .rent-form__grid { display: grid; gap: var(--sp-4); grid-template-columns: 1fr 1fr; }
+  .rent-form__grid > .field { min-inline-size: 0; }
+  .field--wide { grid-column: 1 / -1; }
+  @media (max-width: 479px) { .rent-form__grid { grid-template-columns: 1fr; } }
+  fieldset.field { border: 0; padding: 0; margin: 0; }
+  .help { color: var(--c-muted); font-size: var(--fs-xs); }
+  .rf-seg { display: flex; flex-wrap: wrap; gap: 4px; }
+  .rf-seg label, .rf-chip { position: relative; }
+  .rf-seg input, .rf-chip input { position: absolute; opacity: 0; inset: 0; inline-size: 100%; block-size: 100%; margin: 0; cursor: pointer; }
+  .rf-seg span, .rf-chip span { display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; border: 1px solid var(--c-line-strong); border-radius: var(--r-pill); font-size: var(--fs-sm); background: #fff; }
+  .rf-chip span :global(.icon) { inline-size: 14px; block-size: 14px; opacity: 0; }
+  .rf-seg input:checked + span, .rf-chip input:checked + span { background: var(--c-primary-50); border-color: var(--c-primary); color: var(--c-primary-700); font-weight: 600; }
+  .rf-chip input:checked + span :global(.icon) { opacity: 1; }
+  .rf-seg input:focus-visible + span, .rf-chip input:focus-visible + span { outline: 3px solid var(--c-primary-100); outline-offset: 1px; }
+  .rf-chips { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+  .rent-form__submit { margin-block-start: var(--sp-4); inline-size: 100%; justify-content: center; }
+  .rent-result { min-block-size: 280px; }
+  .rent-result:focus { outline: none; }
+  .rent-result__empty { display: grid; place-items: center; text-align: center; gap: var(--sp-3); color: var(--c-muted); min-block-size: 240px; }
+  .rent-result__empty :global(.icon) { inline-size: 48px; block-size: 48px; color: var(--c-primary-100); }
+  .rent-result__empty p { max-inline-size: 40ch; margin: 0; }
+</style>

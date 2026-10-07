@@ -1,0 +1,74 @@
+---
+// Elenco + creazione per le anagrafiche del back-office.
+import AppLayout from '../../../layouts/AppLayout.astro';
+import Field from '../../../components/Field.astro';
+import Csrf from '../../../components/Csrf.astro';
+import Icon from '../../../components/Icon.astro';
+import { entities, loadOptions, nullify } from '../../../lib/admin-entities';
+import { formToObject, fieldErrors } from '../../../lib/validation';
+import { setFlash } from '../../../lib/flash';
+
+const { t, supabase } = Astro.locals;
+const ent = entities[Astro.params.entity ?? ''];
+if (!ent) return Astro.rewrite('/404');
+const f = t.admin.fields;
+let errors: Record<string, string> = {};
+let values: Record<string, any> = { approval_limit_ils: 1000, payment_day: 1, status: ent.table === 'leases' ? 'active' : 'vacant', deposit_ils: 0 };
+let open = false;
+
+if (Astro.request.method === 'POST') {
+  values = formToObject(await Astro.request.formData());
+  const p = ent.schema.safeParse(values);
+  open = true;
+  if (!p.success) errors = fieldErrors(p.error);
+  else {
+    const { error } = await supabase.from(ent.table).insert(nullify(p.data));
+    if (error) errors._ = error.code === '23505' ? `${t.common.invalid} (duplicate)` : error.code === '42501' ? t.common.forbidden : t.common.error;
+    else {
+      setFlash(Astro.cookies, 'success', t.admin.created);
+      return Astro.redirect(`/admin/${Astro.params.entity}`, 303);
+    }
+  }
+}
+const q = (Astro.url.searchParams.get('q') ?? '').trim().slice(0, 80);
+const [{ data: rows }, options] = await Promise.all([supabase.from(ent.table).select(ent.select).order(ent.order).limit(500), loadOptions(supabase, t)]);
+const filtered = (rows ?? []).filter((r: any) => !q || JSON.stringify(r).toLowerCase().includes(q.toLowerCase()));
+---
+<AppLayout title={ent.title(t)} active={ent.navKey}>
+  <details class="create" open={open}>
+    <summary><Icon name="plus" /> {t.admin.newItem}</summary>
+    <div class="create-body">
+      {errors._ && <p class="form-status" data-type="error" role="alert">{errors._}</p>}
+      {Object.keys(errors).length > 0 && !errors._ && <p class="form-status" data-type="error" role="alert">{t.common.invalid}</p>}
+      <form method="post" class="form-grid">
+        <Csrf />
+        {ent.fields.map((fd) => (
+          <Field name={fd.name} label={f[fd.name] ?? fd.name} type={fd.type === 'select' || fd.type === 'textarea' ? undefined : fd.type}
+            textarea={fd.type === 'textarea'} options={fd.options ? options[fd.options] : undefined} required={fd.required} maxlength={fd.max}
+            step={fd.step} value={fd.type === 'checkbox' ? undefined : values[fd.name]} checked={fd.type === 'checkbox' ? !!values[fd.name] : undefined} error={errors[fd.name]} class={fd.span ? 'span-2' : undefined} />
+        ))}
+        <div class="form-actions span-2"><button type="submit" class="btn btn--primary btn--sm">{t.common.create}</button></div>
+      </form>
+    </div>
+  </details>
+
+  <form method="get" class="filters" role="search">
+    <div class="field"><label for="q" class="visually-hidden">{t.common.search}</label><input class="input" type="search" id="q" name="q" value={q} placeholder={t.common.search} /></div>
+    <button class="btn btn--secondary btn--sm" type="submit"><Icon name="search" /> {t.common.search}</button>
+  </form>
+
+  <div class="table-wrap dtable dcard flush">
+    <table>
+      <caption class="visually-hidden">{ent.title(t)}</caption>
+      <thead><tr>{ent.columns.map((c) => <th scope="col">{f[c.label] ?? (t.admin as any)[c.label] ?? c.label}</th>)}<th scope="col">{t.common.actions}</th></tr></thead>
+      <tbody>
+        {filtered.map((r: any) => (
+          <tr>
+            {ent.columns.map((c, i) => (i === 0 ? <th scope="row"><a href={`/admin/${Astro.params.entity}/${r.id}`}>{c.get(r, t)}</a></th> : <td>{c.get(r, t)}</td>))}
+            <td><a class="btn btn--secondary btn--xs" href={`/admin/${Astro.params.entity}/${r.id}`}>{t.common.edit}<span class="visually-hidden"> {ent.label(r)}</span></a></td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+</AppLayout>

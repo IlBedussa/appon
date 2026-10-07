@@ -1,0 +1,96 @@
+---
+// Guscio dell'area riservata: barra laterale (come la demo), barra superiore con valuta,
+// lingua, notifiche e uscita. Le voci di menu dipendono dal ruolo.
+import Base from './Base.astro';
+import Icon from '../components/Icon.astro';
+import Logo from '../components/Logo.astro';
+import LangSwitcher from '../components/LangSwitcher.astro';
+import Flash from '../components/Flash.astro';
+import Csrf from '../components/Csrf.astro';
+import { fill } from '../i18n';
+import { date } from '../lib/format';
+interface Props { title: string; active?: string; wide?: boolean }
+const { title, active } = Astro.props;
+const { t, profile, supabase, currency, fx, intl } = Astro.locals;
+const role = profile!.role;
+
+type Item = [key: string, href: string, icon: string, label: string];
+const n = t.nav;
+const items: Item[] =
+  role === 'owner'
+    ? [['overview', '/owner', 'chart', n.overview], ['properties', '/owner/properties', 'key', n.properties], ['statements', '/owner/statements', 'doc', n.statements],
+       ['maintenance', '/owner/maintenance', 'tool', n.maintenance], ['inspections', '/owner/inspections', 'camera', n.inspections], ['documents', '/owner/documents', 'paperclip', n.documents], ['payments', '/owner/payments', 'wallet', n.payments]]
+    : role === 'tenant'
+    ? [['overview', '/tenant', 'home', n.myLease], ['new', '/tenant/requests/new', 'plus', n.newRequest], ['requests', '/tenant/requests', 'tool', n.requests], ['chat', '/tenant/chat', 'mail', n.chat],
+       ['inspections', '/tenant/inspections', 'camera', n.inspections], ['documents', '/tenant/documents', 'paperclip', n.documents], ['payments', '/tenant/payments', 'wallet', n.payments]]
+    : [['overview', '/admin', 'chart', n.overview], ['properties', '/admin/properties', 'key', n.properties], ['owners', '/admin/owners', 'user', n.owners],
+       ['tenants', '/admin/tenants', 'users', n.tenants], ['leases', '/admin/leases', 'doc', n.leases], ['statements', '/admin/statements', 'list', n.statements],
+       ['maintenance', '/admin/maintenance', 'tool', n.maintenance], ['inspections', '/admin/inspections', 'camera', n.inspections], ['documents', '/admin/documents', 'paperclip', n.documents], ['payments', '/admin/payments', 'wallet', n.payments],
+       ['metrics', '/admin/metrics', 'clock', n.metrics], ['users', '/admin/users', 'mail', n.users], ['audit', '/admin/audit', 'eye', n.audit]];
+items.push(['notifications', '/notifications', 'bell', n.notifications], ['security', '/security', 'shield', n.security]);
+
+const { count: unread } = await supabase.from('notifications').select('id', { count: 'exact', head: true }).is('read_at', null);
+const initials = (profile!.full_name || profile!.email).split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase();
+const next = Astro.url.pathname + Astro.url.search;
+---
+<Base title={title}>
+  <div class="dash portal" id="dash">
+    <div class="dash-shell">
+      <aside class="dash-side">
+        <a href="/" class="side-brand" aria-label="Easybayit"><Logo light /></a>
+        <div class="dash-owner">
+          <span class="dash-avatar" aria-hidden="true">{initials}</span>
+          <span><strong>{profile!.full_name || profile!.email}</strong><small>{t.roles[role]}</small></span>
+        </div>
+        <nav aria-label={n.label}>
+          <ul class="dash-nav">
+            {items.map(([key, href, icon, label]) => (
+              <li>
+                <a href={href} aria-current={active === key ? 'page' : undefined}>
+                  <Icon name={icon} /> <span>{label}</span>
+                  {key === 'notifications' && (unread ?? 0) > 0 && <span class="dash-count"><span class="visually-hidden">{fill(t.notif.unread, { n: unread ?? 0 })}: </span>{unread}</span>}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </nav>
+        <form method="post" action="/logout" class="side-logout">
+          <Csrf />
+          <button type="submit" class="dash-back as-btn"><Icon name="logout" /> {t.auth.signOut}</button>
+        </form>
+      </aside>
+
+      <div class="dash-main">
+        <header class="dash-top">
+          <div>
+            <p class="dash-hello">{t.top.hello}, {profile!.full_name || profile!.email}</p>
+            <h1 class="dash-title">{title}</h1>
+          </div>
+          <div class="dash-tools">
+            <div class="seg" role="group" aria-label={t.top.currency}>
+              {(['ILS', 'USD', 'EUR', 'GBP'] as const).map((c) => (
+                <a href={`/lang?cur=${c}&next=${encodeURIComponent(next)}`} aria-pressed={c === currency ? 'true' : 'false'} aria-current={c === currency ? 'true' : undefined}>{c}</a>
+              ))}
+            </div>
+            <LangSwitcher />
+            <a href="/notifications" class="icon-btn bell" aria-label={`${t.top.openNotifications}${unread ? ' · ' + fill(t.notif.unread, { n: unread }) : ''}`}>
+              <Icon name="bell" />
+              {(unread ?? 0) > 0 && <span class="bell-dot" aria-hidden="true">{unread}</span>}
+            </a>
+          </div>
+        </header>
+        <p class="dash-rates">
+          <Icon name="info" />
+          {fx
+            ? <span>{fill(t.fx.note, { d: date(fx.date, intl), usd: fx.USD.toFixed(3), eur: fx.EUR.toFixed(3), gbp: fx.GBP.toFixed(3) })} {fx.stale ? t.fx.stale : ''}</span>
+            : <span>{t.fx.unavailable}</span>}
+        </p>
+        <main id="main" tabindex="-1">
+          <Flash />
+          <slot />
+        </main>
+        <footer class="app-foot"><small>{t.meta.company} · {t.auth.noCard}</small></footer>
+      </div>
+    </div>
+  </div>
+</Base>

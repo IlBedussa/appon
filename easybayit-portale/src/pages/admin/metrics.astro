@@ -1,0 +1,70 @@
+---
+// Metriche di servizio (staff): tempi di prima risposta e risoluzione misurati dai timestamp.
+// Gli aggregati mensili (funzione portfolio_sla_stats, min. 5 richieste) sono già pronti per il sito.
+import AppLayout from '../../layouts/AppLayout.astro';
+import Icon from '../../components/Icon.astro';
+import Pill from '../../components/Pill.astro';
+import { median, duration } from '../../lib/sla';
+import { monthLong, dateTime } from '../../lib/format';
+import { lastMonths } from '../../lib/format';
+
+const { t, supabase, intl } = Astro.locals;
+const months = lastMonths(12);
+const [{ data: rows }, { data: pub }, { data: open }] = await Promise.all([
+  supabase.from('maintenance_sla').select('id, ref, priority, status, created_at, response_hours, resolution_hours').gte('created_at', months[0] + '-01'),
+  supabase.rpc('portfolio_sla_stats', { p_months: 12 }),
+  supabase.from('maintenance_requests').select('id, ref, title, source, priority, status, created_at, property:properties(code)').not('status', 'in', '(closed,cancelled)').order('created_at').limit(8),
+]);
+const all = (rows ?? []).filter((r) => r.status !== 'cancelled');
+const stats = (list: typeof all) => ({
+  n: list.length,
+  resp: median(list.map((r) => Number(r.response_hours)).filter((n) => n > 0)),
+  reso: median(list.map((r) => Number(r.resolution_hours)).filter((n) => n > 0)),
+  p90: (() => { const v = list.map((r) => Number(r.resolution_hours)).filter((n) => n > 0).sort((a, b) => a - b); return v.length ? v[Math.min(v.length - 1, Math.floor(v.length * 0.9))] : null; })(),
+});
+const total = stats(all);
+const byMonth = months.map((m) => ({ m, ...stats(all.filter((r) => r.created_at.slice(0, 7) === m)) }));
+const byPrio = (['urgent', 'routine'] as const).map((p) => ({ p, ...stats(all.filter((r) => r.priority === p)) }));
+const d = (h: number | null) => duration(h, t.pri, intl);
+const ageH = (iso: string) => (Date.now() - Date.parse(iso)) / 3600000;
+---
+<AppLayout title={t.pri.metricsTitle} active="metrics">
+  <p class="muted">{t.pri.metricsSub}</p>
+  <div class="kpis">
+    <div class="kpi"><p class="kpi-label"><Icon name="tool" /> {t.pri.requests}</p><p class="kpi-value">{total.n}</p><p class="kpi-sub">{t.owner.chartIeSub.split(',')[0]}</p></div>
+    <div class="kpi"><p class="kpi-label"><Icon name="clock" /> {t.pri.avgResponse}</p><p class="kpi-value">{d(total.resp)}</p></div>
+    <div class="kpi"><p class="kpi-label"><Icon name="check" /> {t.pri.avgResolution}</p><p class="kpi-value">{d(total.reso)}</p></div>
+    <div class="kpi kpi--accent"><p class="kpi-label"><Icon name="chart" /> {t.pri.p90}</p><p class="kpi-value">{d(total.p90)}</p></div>
+  </div>
+  <div class="stack-sm">
+    <div class="table-wrap dtable dcard flush">
+      <table>
+        <caption>{t.st.period}</caption>
+        <thead><tr><th scope="col">{t.st.period}</th><th scope="col" class="num">{t.pri.requests}</th><th scope="col" class="num">{t.pri.avgResponse}</th><th scope="col" class="num">{t.pri.avgResolution}</th></tr></thead>
+        <tbody>{byMonth.map((r) => <tr><th scope="row">{monthLong(r.m, intl)}</th><td class="num">{r.n}</td><td class="num">{d(r.resp)}</td><td class="num">{d(r.reso)}</td></tr>)}</tbody>
+      </table>
+    </div>
+    <div class="grid-2">
+      <div class="table-wrap dtable dcard flush">
+        <table>
+          <caption>{t.pri.byPriority}</caption>
+          <thead><tr><th scope="col">{t.tenant.priorityLabel}</th><th scope="col" class="num">{t.pri.requests}</th><th scope="col" class="num">{t.pri.avgResponse}</th><th scope="col" class="num">{t.pri.avgResolution}</th></tr></thead>
+          <tbody>{byPrio.map((r) => <tr><th scope="row">{t.priority[r.p]}</th><td class="num">{r.n}</td><td class="num">{d(r.resp)}</td><td class="num">{d(r.reso)}</td></tr>)}</tbody>
+        </table>
+      </div>
+      <section class="dcard" aria-labelledby="h-old">
+        <div class="dcard-head"><strong id="h-old">{t.pri.openOldest}</strong></div>
+        <ul class="event-list">
+          {(open ?? []).map((r) => <li><a href={`/admin/maintenance/${r.id}`}>R-{r.ref} · {r.title}</a> <span>{r.priority === 'urgent' && <Pill tone="urgent">{t.priority.urgent}</Pill>} <small>{t.pri.age}: {d(ageH(r.created_at))}</small></span></li>)}
+        </ul>
+      </section>
+    </div>
+      <div class="table-wrap dtable dcard flush">
+        <table>
+          <caption>Website-ready (portfolio_sla_stats)</caption>
+          <thead><tr><th scope="col">{t.st.period}</th><th scope="col" class="num">n</th><th scope="col" class="num">{t.pri.avgResponse}</th><th scope="col" class="num">{t.pri.avgResolution}</th></tr></thead>
+          <tbody>{(pub ?? []).map((r: any) => <tr><th scope="row">{monthLong(r.month, intl)}</th><td class="num">{r.requests}</td><td class="num">{d(Number(r.median_response_hours))}</td><td class="num">{d(Number(r.median_resolution_hours))}</td></tr>)}</tbody>
+        </table>
+      </div>
+  </div>
+</AppLayout>

@@ -1,0 +1,8 @@
+---
+// Badge di origine della richiesta (WhatsApp / web chat del portale).
+interface Props { source?: string | null }
+const { source } = Astro.props;
+const { t } = Astro.locals;
+---
+{source === 'whatsapp' && <span class="src-badge src-wa" data-testid="src-whatsapp">● {t.chat.viaWhatsapp}</span>}
+{source === 'webchat' && <span class="src-badge src-web">● {t.chat.viaChat}</span>}

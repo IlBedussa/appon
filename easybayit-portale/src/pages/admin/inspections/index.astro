@@ -1,0 +1,58 @@
+---
+// Ispezioni (staff): elenco e creazione di una bozza.
+import AppLayout from '../../../layouts/AppLayout.astro';
+import InspectionList from '../../../components/InspectionList.astro';
+import Field from '../../../components/Field.astro';
+import Csrf from '../../../components/Csrf.astro';
+import Icon from '../../../components/Icon.astro';
+import { ix } from '../../../i18n/inspections';
+import { INSPECTION_KINDS } from '../../../lib/inspections';
+import { z, formToObject, isoDate, optUuid } from '../../../lib/validation';
+import { setFlash } from '../../../lib/flash';
+import { date } from '../../../lib/format';
+
+const { supabase, lang, t, user, intl } = Astro.locals;
+const x = ix(lang);
+if (Astro.request.method === 'POST') {
+  const p = z.object({ property_id: z.uuid(), lease_id: optUuid, kind: z.enum(INSPECTION_KINDS), performed_at: isoDate }).safeParse(formToObject(await Astro.request.formData()));
+  let ok = p.success;
+  if (ok && p.data!.lease_id) {
+    const { data: l } = await supabase.from('leases').select('property_id').eq('id', p.data!.lease_id).maybeSingle();
+    ok = l?.property_id === p.data!.property_id;
+  }
+  if (ok) {
+    const { data, error } = await supabase.from('inspections').insert({ ...p.data!, lease_id: p.data!.lease_id ?? null, performed_by: user!.id, created_by: user!.id }).select('id').single();
+    if (!error && data) { setFlash(Astro.cookies, 'success', x.admin.created); return Astro.redirect(`/admin/inspections/${data.id}`, 303); }
+  }
+  setFlash(Astro.cookies, 'error', t.common.invalid);
+  return Astro.redirect('/admin/inspections', 303);
+}
+const [{ data }, { data: props }, { data: leases }] = await Promise.all([
+  supabase.from('inspections').select('id, kind, status, performed_at, property:properties(code, name), items:inspection_items(count), photos:inspection_photos(count)').order('status').order('performed_at', { ascending: false }),
+  supabase.from('properties').select('id, code, name').order('code'),
+  supabase.from('leases').select('id, start_date, end_date, status, property:properties(code), tenant:tenants(full_name)').in('status', ['active', 'upcoming', 'ended']).order('start_date', { ascending: false }),
+]);
+const today = new Date().toISOString().slice(0, 10);
+---
+<AppLayout title={x.title} active="inspections">
+  <div class="grid-2 insp-admin">
+    <div>
+      <p class="muted">{x.sub}</p>
+      <InspectionList rows={(data ?? []) as any} base="/admin/inspections" />
+    </div>
+    <section class="dcard" aria-labelledby="h-new">
+      <h2 class="panel-h" id="h-new"><Icon name="plus" /> {x.admin.new}</h2>
+      <form method="post" class="form-grid">
+        <Csrf />
+        <Field name="property_id" label={x.admin.property} required options={(props ?? []).map((p) => ({ value: p.id, label: `${p.code} · ${p.name}` }))} />
+        <Field name="lease_id" label={x.lease} options={[{ value: '', label: x.leaseNone }, ...(leases ?? []).map((l: any) => ({ value: l.id, label: `${l.property?.code} · ${l.tenant?.full_name ?? '—'} · ${date(l.start_date, intl)} – ${date(l.end_date, intl)}` }))]} />
+        <Field name="kind" label={x.admin.kind} required options={INSPECTION_KINDS.map((k) => ({ value: k, label: x.kinds[k] }))} />
+        <Field name="performed_at" type="date" label={x.admin.date} required value={today} />
+        <div class="form-actions span-2"><button class="btn btn--primary btn--sm" type="submit">{x.admin.create}</button></div>
+      </form>
+    </section>
+  </div>
+</AppLayout>
+<style>
+  @media (min-width: 1100px) { .insp-admin { grid-template-columns: 1fr 380px; align-items: start; } }
+</style>

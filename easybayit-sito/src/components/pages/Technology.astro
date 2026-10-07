@@ -1,0 +1,92 @@
+---
+import Icon from '../Icon.astro';
+import T from '../T.astro';
+import PageHero from '../PageHero.astro';
+import ArchDiagram from '../ArchDiagram.astro';
+import Workflows from '../Workflows.astro';
+import BotShowcase from '../BotShowcase.astro';
+import TrustSection from '../TrustSection.astro';
+import CtaBand from '../CtaBand.astro';
+import { url, t, type Locale } from '../../i18n/config';
+interface Props { lang: Locale }
+const { lang } = Astro.props;
+const g = t(lang);
+const p = g.pages.technology;
+const statusIcon = { live: 'check', soon: 'clock', tbc: 'info' } as const;
+---
+<PageHero eyebrow={p.eyebrow} title={p.h1} lead={p.lead}>
+  <div slot="actions" class="legend-row" aria-label={p.legendTitle}>
+    <span class="st st--live"><Icon name="check" /> {p.status.live}</span>
+    <span class="st st--soon"><Icon name="clock" /> {p.status.soon}</span>
+    <span class="st st--tbc"><Icon name="info" /> <T text={p.status.tbc} /></span>
+  </div>
+</PageHero>
+
+<section class="section">
+  <div class="container">
+    <div class="section-head"><h2>{p.archTitle}</h2><p>{p.archLead}</p></div>
+    <ArchDiagram lang={lang} />
+  </div>
+</section>
+
+<BotShowcase lang={lang} />
+
+<Workflows lang={lang} />
+
+<section class="section section--surface">
+  <div class="container">
+    <div class="section-head"><h2>{p.featuresTitle}</h2></div>
+    <div class="grid grid--2 feat-grid">
+      {p.features.map((f) => (
+        <article class="card feat">
+          <span class="icon-badge"><Icon name={f.icon} /></span>
+          <div>
+            <div class="feat-head">
+              <h3>{f.title}</h3>
+              <span class={`st st--${f.status}`}><Icon name={statusIcon[f.status as keyof typeof statusIcon]} /> <T text={p.status[f.status as keyof typeof p.status]} /></span>
+            </div>
+            <p><T text={f.text} /></p>
+          </div>
+        </article>
+      ))}
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="container">
+    <div class="section-head"><h2>{p.integrationsTitle}</h2><p>{p.integrationsLead}</p></div>
+    <div class="grid grid--3">
+      {p.integrations.map((i) => (
+        <div class="card card--flat integ"><h3>{i.title}</h3><p><T text={i.text} /></p></div>
+      ))}
+    </div>
+    <div class="card card--flat cert">
+      <h3><Icon name="shield" /> {p.certTitle}</h3>
+      <p><T text={p.certText} /></p>
+    </div>
+    <p class="demo-link"><a class="btn btn--secondary" href={url(lang, 'demo')}>{g.pages.portal.demoCta} <Icon name="arrow" /></a></p>
+  </div>
+</section>
+
+<TrustSection lang={lang} surface />
+<CtaBand lang={lang} />
+<style>
+  .legend-row { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-block-start: var(--sp-5); }
+  .st { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-xs); font-weight: 700; padding: 3px 10px; border-radius: var(--r-pill); white-space: nowrap; }
+  .st :global(.icon) { inline-size: 14px; block-size: 14px; }
+  .st--live { background: var(--c-success-50); color: var(--c-success); }
+  .st--soon { background: var(--c-primary-50); color: var(--c-primary-700); }
+  .st--tbc { background: var(--c-warning-50); color: var(--c-warning); }
+  .st :global(.ph) { background: none; padding: 0; color: inherit; }
+  .feat { display: flex; gap: var(--sp-4); align-items: flex-start; }
+  .feat .icon-badge { margin: 0; flex: none; }
+  .feat > div { flex: 1; }
+  .feat-head { display: flex; justify-content: space-between; gap: var(--sp-3); align-items: flex-start; flex-wrap: wrap; margin-block-end: var(--sp-2); }
+  .feat-head h3 { margin: 0; }
+  .feat p { margin: 0; }
+  .integ p { margin: 0; }
+  .cert { margin-block-start: var(--sp-5); border-style: dashed; }
+  .cert h3 { display: flex; align-items: center; gap: var(--sp-2); }
+  .demo-link { margin-block-start: var(--sp-5); }
+</style>

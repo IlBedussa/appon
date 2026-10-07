@@ -1,0 +1,23 @@
+---
+import AppLayout from '../../../layouts/AppLayout.astro';
+import Pill from '../../../components/Pill.astro';
+import SourceBadge from '../../../components/SourceBadge.astro';
+import Icon from '../../../components/Icon.astro';
+import { date } from '../../../lib/format';
+const { t, supabase, intl } = Astro.locals;
+const { data } = await supabase.from('maintenance_requests').select('id, ref, title, source, status, priority, created_at, property:properties(code, name)').order('created_at', { ascending: false });
+---
+<AppLayout title={t.tenant.requestsTitle} active="requests">
+  <p><a class="btn btn--primary btn--sm" href="/tenant/requests/new"><Icon name="plus" /> {t.tenant.newRequest}</a></p>
+  {(data ?? []).length === 0 ? <p class="empty">{t.maint.empty}</p> : (
+    <ul class="req-list">
+      {data!.map((r) => (
+        <li><a class="req" href={`/tenant/requests/${r.id}`}>
+          <span class="req-top"><strong>{r.title} <SourceBadge source={(r as any).source} /></strong><Pill tone={r.priority === 'urgent' ? 'urgent' : 'neutral'}>{(t.priority as Record<string, string>)[r.priority]}</Pill></span>
+          <small>R-{r.ref} · {(r.property as any)?.name} · {date(r.created_at, intl)}</small>
+          <span class="req-status">{(t.maintStatus as Record<string, string>)[r.status]}</span>
+        </a></li>
+      ))}
+    </ul>
+  )}
+</AppLayout>

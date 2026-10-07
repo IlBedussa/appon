@@ -1,0 +1,53 @@
+---
+// [DIETRO FLAG SHOW_TRUST_SECURITY — spenta di default]
+// Fiducia e sicurezza: 2FA, cifratura, regione dati [DA CONFERMARE], ruoli/RLS, audit, PDF verificabili,
+// legge israeliana sulla privacy e dati societari. Nessun logo di autorità (vedi SHOW_TEST_LOGOS).
+import TIcon from '../../trust/TIcon.astro';
+import T from '../../T.astro';
+import PageHero from '../../PageHero.astro';
+import TrustCta from '../../trust/TrustCta.astro';
+import { tt, type Locale } from '../../../i18n/config';
+interface Props { lang: Locale }
+const { lang } = Astro.props;
+const x = tt(lang);
+const s = x.sec;
+---
+<PageHero eyebrow={s.eyebrow} title={s.h1} lead={s.lead} />
+<section class="section">
+  <div class="container">
+    <div class="grid grid--3">
+      {s.items.map((it, i) => (
+        <article class="card" data-reveal style={`transition-delay:${(i % 3) * 70}ms`}>
+          <span class="icon-badge"><TIcon name={it.icon} /></span>
+          <h3>{it.title}</h3>
+          <p><T text={it.text} /></p>
+        </article>
+      ))}
+    </div>
+  </div>
+</section>
+<section class="section section--surface">
+  <div class="container ts-two">
+    <div class="card card--flat">
+      <h2><TIcon name="shield" /> {s.privacyTitle}</h2>
+      <p><T text={s.privacy} /></p>
+    </div>
+    <div class="card card--flat">
+      <h2><TIcon name="doc" /> {s.companyTitle}</h2>
+      <dl class="ts-dl">{s.company.map(([k, v]) => <><dt>{k}</dt><dd><T text={v} /></dd></>)}</dl>
+      <p class="ts-small">{s.registry}</p>
+      <p class="ts-small"><T text={s.report} /></p>
+    </div>
+  </div>
+</section>
+<TrustCta lang={lang} />
+<style>
+  .ts-two { display: grid; gap: var(--sp-5); }
+  @media (min-width: 900px) { .ts-two { grid-template-columns: 1fr 1fr; } }
+  .ts-two h2 { display: flex; align-items: center; gap: var(--sp-3); font-size: var(--fs-lg); }
+  .ts-two h2 :global(.icon) { color: var(--c-primary); }
+  .ts-dl { display: grid; grid-template-columns: auto 1fr; gap: var(--sp-2) var(--sp-4); margin: 0; }
+  .ts-dl dt { color: var(--c-muted); }
+  .ts-dl dd { margin: 0; font-weight: 600; }
+  .ts-small { font-size: var(--fs-sm); color: var(--c-muted); margin-block-start: var(--sp-3); }
+</style>

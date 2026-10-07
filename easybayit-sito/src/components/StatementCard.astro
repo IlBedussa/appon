@@ -1,0 +1,62 @@
+---
+// Mockup UI di un rendiconto mensile (solo illustrazione, importi oscurati: nessun numero inventato).
+import Icon from './Icon.astro';
+import T from './T.astro';
+import { t, type Locale } from '../i18n/config';
+interface Props { lang: Locale; compact?: boolean }
+const { lang, compact = false } = Astro.props;
+const d = t(lang);
+const s = d.mock.statement;
+---
+<figure class:list={['mock-statement', { compact }]}>
+  <div class="ms-card">
+    <div class="ms-head">
+      <div>
+        <p class="ms-title">{s.title}</p>
+        <p class="ms-sub"><T text={s.period} /></p>
+      </div>
+      <span class="badge badge--ok"><Icon name="check" /> PDF</span>
+    </div>
+    <p class="ms-prop"><Icon name="pin" /> <T text={s.property} /></p>
+    <ul class="ms-rows">
+      {s.rows.map((r) => (
+        <li>
+          <span>{r.label}</span>
+          <span class:list={['ms-amt', r.kind]} dir="ltr">{r.kind === 'in' ? '+' : '−'} ₪ ••••</span>
+        </li>
+      ))}
+    </ul>
+    <div class="ms-net">
+      <span>{s.net}</span>
+      <span class="ms-amt net" dir="ltr">₪ ••••</span>
+    </div>
+    <div class="ms-foot">
+      <span class="ms-chip"><Icon name="paperclip" /> {s.docs} · 3</span>
+      <span class="ms-chip ms-chip--primary"><Icon name="download" /> {s.download}</span>
+    </div>
+  </div>
+  <figcaption>{d.ui.sample}</figcaption>
+</figure>
+<style>
+  .mock-statement { margin: 0; }
+  .ms-card {
+    background: #fff; border: 1px solid var(--c-line); border-radius: var(--r-xl); box-shadow: var(--sh-lg);
+    padding: var(--sp-5); max-inline-size: 440px; margin-inline: auto;
+  }
+  .ms-head { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--sp-3); }
+  .ms-title { font-weight: 700; font-size: var(--fs-lg); margin: 0; }
+  .ms-sub { color: var(--c-muted); font-size: var(--fs-sm); margin: 0; }
+  .ms-prop { display: flex; align-items: center; gap: var(--sp-2); font-size: var(--fs-sm); color: var(--c-ink-2); background: var(--c-surface); border-radius: var(--r-md); padding: var(--sp-2) var(--sp-3); margin-block: var(--sp-4); }
+  .ms-rows { list-style: none; display: grid; }
+  .ms-rows li { display: flex; justify-content: space-between; gap: var(--sp-3); padding-block: var(--sp-3); border-block-end: 1px dashed var(--c-line); font-size: var(--fs-sm); }
+  .ms-amt { font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; }
+  .ms-amt.in { color: var(--c-success); }
+  .ms-amt.out { color: var(--c-ink-2); }
+  .ms-net { display: flex; justify-content: space-between; align-items: center; gap: var(--sp-3); margin-block-start: var(--sp-4); padding: var(--sp-3) var(--sp-4); background: var(--c-primary-50); border-radius: var(--r-md); font-weight: 700; color: var(--c-primary-700); }
+  .ms-amt.net { color: var(--c-primary-700); font-size: var(--fs-lg); }
+  .ms-foot { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-block-start: var(--sp-4); }
+  .ms-chip { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-xs); font-weight: 600; padding: 6px 10px; border-radius: var(--r-pill); background: var(--c-surface-2); color: var(--c-ink-2); }
+  .ms-chip--primary { background: var(--c-primary); color: #fff; }
+  figcaption { text-align: center; font-size: var(--fs-xs); color: var(--c-muted); margin-block-start: var(--sp-3); }
+  .compact .ms-card { box-shadow: var(--sh-sm); }
+</style>

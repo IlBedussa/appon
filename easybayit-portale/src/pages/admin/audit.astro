@@ -1,0 +1,39 @@
+---
+// Log di audit (solo lettura; append-only nel DB). Filtri per azione ed entità.
+import AppLayout from '../../layouts/AppLayout.astro';
+import Icon from '../../components/Icon.astro';
+import { dateTime } from '../../lib/format';
+
+const { t, supabase, intl } = Astro.locals;
+const action = (Astro.url.searchParams.get('action') ?? '').replace(/[^a-z_.]/g, '').slice(0, 60);
+const entity = (Astro.url.searchParams.get('entity') ?? '').replace(/[^a-z_]/g, '').slice(0, 60);
+let q = supabase.from('audit_log').select('id, created_at, actor_id, actor_role, action, entity, entity_id, meta').order('created_at', { ascending: false }).limit(300);
+if (action) q = q.ilike('action', `${action}%`);
+if (entity) q = q.eq('entity', entity);
+const [{ data: rows }, { data: profiles }] = await Promise.all([q, supabase.from('profiles').select('id, email')]);
+const emailOf = new Map((profiles ?? []).map((p) => [p.id, p.email]));
+---
+<AppLayout title={t.nav.audit} active="audit">
+  <form method="get" class="filters" role="search">
+    <div class="field"><label for="a">{t.admin.audit.action}</label><input class="input" id="a" name="action" value={action} placeholder="quote. / auth. / payments." /></div>
+    <div class="field"><label for="e">{t.admin.audit.entity}</label><input class="input" id="e" name="entity" value={entity} placeholder="payments" /></div>
+    <button class="btn btn--secondary btn--sm" type="submit"><Icon name="search" /> {t.common.filter}</button>
+  </form>
+  <div class="table-wrap dtable dcard flush">
+    <table>
+      <caption class="visually-hidden">{t.nav.audit}</caption>
+      <thead><tr><th scope="col">{t.common.date}</th><th scope="col">{t.admin.audit.actor}</th><th scope="col">{t.admin.audit.action}</th><th scope="col">{t.admin.audit.entity}</th><th scope="col">{t.admin.audit.meta}</th></tr></thead>
+      <tbody>
+        {(rows ?? []).map((r) => (
+          <tr>
+            <td class="nowrap">{dateTime(r.created_at, intl)}</td>
+            <td><span class="ltr">{r.actor_id ? emailOf.get(r.actor_id) ?? r.actor_id.slice(0, 8) : '—'}</span><br /><small class="muted">{r.actor_role}</small></td>
+            <th scope="row"><code class="ltr">{r.action}</code></th>
+            <td>{r.entity}{r.entity_id ? ` · ${String(r.entity_id).slice(0, 8)}` : ''}</td>
+            <td class="meta ltr">{JSON.stringify(r.meta)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+</AppLayout>

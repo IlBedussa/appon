@@ -1,0 +1,11 @@
+---
+// Dashboard demo proprietari (EN). Route separata da [...path].astro così il suo CSS (dashboard.css, ~70 KB)
+// viene caricato SOLO su questa pagina e non su tutto il sito.
+import Base from '../../layouts/Base.astro';
+import Dashboard from '../../components/pages/Dashboard.astro';
+import { pageMeta } from '../../i18n/config';
+const meta = pageMeta('en', 'demo');
+---
+<Base lang="en" page="demo" title={meta.title} description={meta.description}>
+  <Dashboard lang="en" />
+</Base>

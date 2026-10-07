@@ -1,0 +1,160 @@
+---
+// Vetrina "bot di manutenzione": chat stile WhatsApp (animata) + scheda ticket sul pannello proprietario/staff
+// (foto, urgenza, timer SLA, approvazione preventivo). Tutti i dati sono FITTIZI ed etichettati come demo.
+// Animazioni attive solo con JS e senza "riduci movimento"; altrimenti tutto è visibile e statico.
+import { siWhatsapp } from 'simple-icons';
+import Icon from './Icon.astro';
+import bot from '../i18n/bot';
+import type { Locale } from '../i18n/config';
+interface Props { lang: Locale; surface?: boolean }
+const { lang, surface = false } = Astro.props;
+const b = bot[lang];
+---
+<section class:list={['section', { 'section--surface': surface }]} id="maintenance-bot" aria-labelledby="bs-t">
+  <div class="container bs-grid">
+    <div class="bs-copy">
+      <p class="eyebrow"><svg viewBox="0 0 24 24" aria-hidden="true" class="bs-wa"><path d={siWhatsapp.path} /></svg> {b.eyebrow}</p>
+      <h2 id="bs-t">{b.title}</h2>
+      <p class="bs-lead">{b.lead}</p>
+      <ol class="bs-steps">{b.steps.map((s, i) => <li style={`--i:${i}`}><span class="tnum">{i + 1}</span>{s}</li>)}</ol>
+      <p class="example-badge">{b.demo}</p>
+    </div>
+
+    <div class="bs-stage bs" data-reveal>
+      <!-- Telefono con chat WhatsApp (mockup) -->
+      <div class="bs-phone" aria-label={b.chatName} role="img">
+        <div class="bs-phone__bar">
+          <span class="bs-avatar"><svg viewBox="0 0 24 24" aria-hidden="true"><path d={siWhatsapp.path} /></svg></span>
+          <span><strong>{b.chatName}</strong><small>{b.chatStatus}</small></span>
+        </div>
+        <div class="bs-chat">
+          {b.msgs.map((m, i) => (
+            <div class:list={['bs-msg', `bs-msg--${m.who}`, { 'bs-msg--photo': 'photo' in m && m.photo }]} style={`--i:${i}`}>
+              {'photo' in m && m.photo ? (
+                <span class="bs-photo" aria-hidden="true"><span class="bs-boiler"><span class="bs-drop"></span><span class="bs-drop bs-drop--2"></span></span></span>
+              ) : m.text}
+              <time>07:{String(40 + i * 2).padStart(2, '0')}{m.who === 'out' && <span class="bs-ticks">✓✓</span>}</time>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <!-- Scheda ticket sul pannello -->
+      <article class="bs-ticket" aria-labelledby="bs-tk">
+        <header class="bs-ticket__head">
+          <span class="bs-ticket__id tnum">{b.ticket} #EB-2417</span>
+          <span class="bs-urgent"><Icon name="alert" /> {b.urgent}</span>
+        </header>
+        <div class="bs-ticket__body">
+          <span class="bs-photo bs-photo--lg" aria-hidden="true"><span class="bs-boiler"><span class="bs-drop"></span><span class="bs-drop bs-drop--2"></span></span></span>
+          <div>
+            <h3 id="bs-tk">{b.issue}</h3>
+            <p><Icon name="pin" /> {b.where}</p>
+            <p><Icon name="user" /> {b.tenant}</p>
+            <p><Icon name="tool" /> {b.tech}</p>
+          </div>
+        </div>
+        <div class="bs-sla">
+          <span><Icon name="clock" /> {b.sla}</span>
+          <strong class="tnum" data-sla="14112">03:55:12</strong> <small>{b.slaLeft}</small>
+          <span class="bs-sla__bar"><span></span></span>
+        </div>
+        <div class="bs-quote">
+          <div><small>{b.quote}</small><p>{b.quoteText}</p></div>
+          <strong class="tnum">{b.amount}</strong>
+        </div>
+        <div class="bs-actions" data-bs-actions>
+          <button type="button" class="btn btn--primary btn--sm" data-approve><Icon name="check" /> {b.approve}</button>
+          <button type="button" class="btn btn--secondary btn--sm">{b.another}</button>
+          <p class="bs-ok" role="status" aria-live="polite" hidden><Icon name="check" /> {b.approved}</p>
+        </div>
+      </article>
+    </div>
+  </div>
+</section>
+
+<script>
+  // Timer SLA (demo) e pulsante "Approva" (solo interfaccia, nessun invio).
+  document.querySelectorAll<HTMLElement>('[data-sla]').forEach((el) => {
+    let s = Number(el.dataset.sla);
+    const f = () => { const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), x = s % 60; el.textContent = [h, m, x].map((n) => String(n).padStart(2, '0')).join(':'); };
+    f();
+    if (!matchMedia('(prefers-reduced-motion: reduce)').matches) setInterval(() => { s = Math.max(0, s - 1); f(); }, 1000);
+  });
+  document.querySelectorAll<HTMLElement>('[data-bs-actions]').forEach((box) => {
+    box.querySelector('[data-approve]')?.addEventListener('click', () => {
+      box.querySelectorAll('button').forEach((b) => (b.hidden = true));
+      (box.querySelector('.bs-ok') as HTMLElement).hidden = false;
+    });
+  });
+</script>
+
+<style>
+  .bs-grid { display: grid; gap: var(--sp-7); align-items: center; }
+  @media (min-width: 1024px) { .bs-grid { grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); } }
+  .bs-wa { inline-size: 16px; block-size: 16px; fill: #25d366; }
+  .bs-lead { font-size: var(--fs-lg); color: var(--c-ink-2); }
+  .bs-steps { list-style: none; margin: var(--sp-5) 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+  .bs-steps li { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-sm); font-weight: 600; color: var(--c-ink-2); background: #fff; border: 1px solid var(--c-line); border-radius: var(--r-pill); padding: 4px 12px 4px 4px; }
+  :global([dir='rtl']) .bs-steps li { padding: 4px 4px 4px 12px; }
+  .bs-steps span { display: grid; place-items: center; inline-size: 22px; block-size: 22px; border-radius: 50%; background: var(--c-secondary); color: #fff; font-size: 12px; }
+
+  .bs-stage { position: relative; display: grid; gap: var(--sp-5); align-items: start; }
+  @media (min-width: 720px) { .bs-stage { grid-template-columns: 300px minmax(0, 1fr); align-items: center; } }
+
+  /* Telefono */
+  .bs-phone { inline-size: min(100%, 300px); margin-inline: auto; border-radius: 34px; background: #0b1324; padding: 10px; box-shadow: var(--sh-lg), 0 0 0 1px #1f2a44; }
+  .bs-phone__bar { display: flex; gap: 10px; align-items: center; background: #075e54; color: #fff; border-radius: 24px 24px 0 0; padding: 12px 14px; }
+  .bs-phone__bar strong { display: block; font-size: 14px; }
+  .bs-phone__bar small { font-size: 11px; opacity: .8; }
+  .bs-avatar { display: grid; place-items: center; inline-size: 34px; block-size: 34px; border-radius: 50%; background: #25d366; flex: none; }
+  .bs-avatar svg { inline-size: 20px; block-size: 20px; fill: #fff; }
+  .bs-chat {
+    display: flex; flex-direction: column; gap: 6px; padding: 12px 10px 16px; min-block-size: 440px; border-radius: 0 0 24px 24px;
+    background: #ece5dd radial-gradient(circle at 20% 20%, rgb(255 255 255 / .35) 0 2px, transparent 3px) 0 0 / 22px 22px;
+  }
+  .bs-msg { position: relative; max-inline-size: 84%; padding: 6px 9px 16px; border-radius: 10px; font-size: 12.5px; line-height: 1.4; color: #111b21; box-shadow: 0 1px 1px rgb(0 0 0 / .12); }
+  .bs-msg--in { align-self: flex-start; background: #fff; border-start-start-radius: 2px; }
+  .bs-msg--out { align-self: flex-end; background: #d9fdd3; border-start-end-radius: 2px; }
+  .bs-msg time { position: absolute; inset-block-end: 3px; inset-inline-end: 8px; font-size: 10px; color: #667781; }
+  .bs-ticks { color: #53bdeb; margin-inline-start: 3px; letter-spacing: -2px; }
+  .bs-msg--photo { padding: 4px 4px 16px; }
+  .bs-photo { display: block; inline-size: 150px; block-size: 96px; border-radius: 8px; overflow: hidden; position: relative; background: linear-gradient(160deg, #cfd8e3, #9fb0c4); }
+  .bs-photo--lg { inline-size: 120px; block-size: 120px; flex: none; }
+  .bs-boiler { position: absolute; inset-block-start: 12%; inset-inline-start: 34%; inline-size: 32%; block-size: 62%; border-radius: 10px 10px 14px 14px; background: linear-gradient(90deg, #f8fafc, #dbe3ec); box-shadow: inset 0 -6px 0 #b9c5d3, 0 4px 10px rgb(0 0 0 / .2); }
+  .bs-drop { position: absolute; inset-block-start: 100%; inset-inline-start: 40%; inline-size: 7px; block-size: 10px; background: #3b82f6; border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%; animation: bs-drip 1.4s ease-in infinite; }
+  .bs-drop--2 { inset-inline-start: 62%; animation-delay: .7s; }
+
+  /* Scheda ticket */
+  .bs-ticket { background: #fff; border: 1px solid var(--c-line); border-radius: var(--r-xl); box-shadow: var(--sh-lg); padding: var(--sp-5); display: grid; gap: var(--sp-4); min-inline-size: 0; }
+  .bs-ticket__head { display: flex; justify-content: space-between; align-items: center; gap: var(--sp-3); flex-wrap: wrap; }
+  .bs-ticket__id { font-weight: 700; color: var(--c-muted); font-size: var(--fs-sm); }
+  .bs-urgent { display: inline-flex; align-items: center; gap: 4px; background: var(--c-error-50); color: var(--c-error); border: 1px solid #fecaca; font-weight: 700; font-size: var(--fs-xs); padding: 3px 10px; border-radius: var(--r-pill); }
+  .bs-urgent :global(.icon) { inline-size: 14px; block-size: 14px; }
+  .bs-ticket__body { display: flex; gap: var(--sp-4); align-items: flex-start; }
+  .bs-ticket__body h3 { font-size: var(--fs-md); margin: 0 0 6px; }
+  .bs-ticket__body p { display: flex; gap: 6px; align-items: center; margin: 0 0 3px; font-size: var(--fs-xs); color: var(--c-ink-2); }
+  .bs-ticket__body :global(.icon) { inline-size: 14px; block-size: 14px; color: var(--c-muted); flex: none; }
+  .bs-sla { display: grid; grid-template-columns: 1fr auto auto; align-items: baseline; gap: 6px; padding: var(--sp-3) var(--sp-4); background: var(--c-warning-50); border-radius: var(--r-md); color: var(--c-warning); font-size: var(--fs-sm); }
+  .bs-sla span:first-child { display: inline-flex; gap: 6px; align-items: center; font-weight: 600; }
+  .bs-sla strong { font-size: var(--fs-lg); }
+  .bs-sla__bar { grid-column: 1 / -1; block-size: 6px; border-radius: 6px; background: #fde68a; overflow: hidden; }
+  .bs-sla__bar span { display: block; block-size: 100%; inline-size: 34%; background: #d97706; border-radius: inherit; animation: bs-sla 6s ease-out both; }
+  .bs-quote { display: flex; justify-content: space-between; align-items: center; gap: var(--sp-3); border: 1px dashed var(--c-line-strong); border-radius: var(--r-md); padding: var(--sp-3) var(--sp-4); }
+  .bs-quote small { color: var(--c-muted); font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .05em; font-weight: 700; }
+  .bs-quote p { margin: 0; font-weight: 600; color: var(--c-ink); font-size: var(--fs-sm); }
+  .bs-quote strong { font-size: var(--fs-xl); color: var(--c-ink); }
+  .bs-actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+  .bs-ok { display: inline-flex; gap: 6px; align-items: center; margin: 0; font-weight: 700; color: var(--c-success); }
+  .bs-ok[hidden], .bs-actions button[hidden] { display: none; }
+
+  /* Animazioni sequenziali (solo con reveal attivo). */
+  :global(html.reveal-on) .bs:not(.is-in) .bs-msg, :global(html.reveal-on) .bs:not(.is-in) .bs-ticket { opacity: 0; }
+  :global(html.reveal-on) .bs.is-in .bs-msg { animation: bs-in .45s cubic-bezier(.2,.8,.2,1) both; animation-delay: calc(var(--i) * .7s); }
+  :global(html.reveal-on) .bs.is-in .bs-ticket { animation: bs-pop .6s cubic-bezier(.2,.8,.2,1) both 5s; }
+  @keyframes bs-in { from { opacity: 0; transform: translateY(10px) scale(.96); } to { opacity: 1; transform: none; } }
+  @keyframes bs-pop { 0% { opacity: 0; transform: translateY(16px); } 60% { box-shadow: 0 0 0 6px rgb(37 211 102 / .25), var(--sh-lg); } 100% { opacity: 1; transform: none; } }
+  @keyframes bs-drip { 0% { transform: translateY(0); opacity: 1; } 100% { transform: translateY(26px); opacity: 0; } }
+  @keyframes bs-sla { from { inline-size: 0; } }
+  @media (prefers-reduced-motion: reduce) { .bs-drop, .bs-sla__bar span { animation: none; } }
+</style>

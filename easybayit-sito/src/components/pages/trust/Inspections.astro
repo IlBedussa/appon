@@ -1,0 +1,105 @@
+---
+// Ispezioni fotografiche (ingresso / uscita / annuale): come funzionano nel portale + report di esempio.
+import TIcon from '../../trust/TIcon.astro';
+import T from '../../T.astro';
+import PageHero from '../../PageHero.astro';
+import SampleDownloads from '../../trust/SampleDownloads.astro';
+import TrustCta from '../../trust/TrustCta.astro';
+import { url, tt, type Locale } from '../../../i18n/config';
+interface Props { lang: Locale }
+const { lang } = Astro.props;
+const x = tt(lang);
+const s = x.insp;
+const pages = [1, 2].map((n) => `/samples/drive/${lang}/inspection-move-in-p${n}.jpg`);
+const photos = ['kitchen', 'living', 'bathroom'];
+---
+<PageHero eyebrow={s.eyebrow} title={s.h1} lead={s.lead}>
+  <div class="btn-row" slot="actions">
+    <a class="btn btn--primary" href={`/downloads/inspection-report-example-${lang}.pdf`} download><TIcon name="download" /> {s.sampleTitle}</a>
+    <a class="btn btn--secondary" href={url(lang, 'pledge', '#drive=inspections')}><TIcon name="folderOpen" /> {x.drive.folders.inspections}</a>
+  </div>
+  <div slot="visual" class="ins-mock" aria-hidden="true">
+    <div class="ins-mock__head">
+      <span class="ins-mock__room"><TIcon name="home" /> {s.mock.room}</span>
+      <span class="ins-mock__ex">{x.common.example}</span>
+    </div>
+    <ul class="ins-mock__items">
+      {s.mock.items.map(([label, c]) => (
+        <li><span>{label}</span><span class:list={['ins-c', `ins-c--${c}`]}>{(s.mock.cond as Record<string, string>)[c]}</span></li>
+      ))}
+    </ul>
+    <div class="ins-mock__photos">
+      {photos.map((p, i) => (
+        <figure><img src={`/samples/drive/photo-${p}-thumb.jpg`} alt="" width="160" height="120" /><figcaption class="tnum" dir="ltr"><TIcon name="camera" /> 31/03/2026 10:{['11', '04', '18'][i]}</figcaption></figure>
+      ))}
+    </div>
+    <p class="ins-mock__acks"><TIcon name="checkCircle" /> {s.mock.acks}</p>
+  </div>
+</PageHero>
+
+<section class="section">
+  <div class="container">
+    <div class="section-head" data-reveal><h2>{s.kindsTitle}</h2></div>
+    <div class="grid grid--3">
+      {s.kinds.map((k, i) => (
+        <article class="card ins-kind" data-reveal style={`transition-delay:${i * 80}ms`}>
+          <span class="icon-badge icon-badge--teal"><TIcon name={k.icon} /></span>
+          <h3>{k.title}</h3>
+          <p>{k.text}</p>
+        </article>
+      ))}
+    </div>
+    <p class="ins-tiers"><T text={s.tiers} /></p>
+  </div>
+</section>
+
+<section class="section section--surface">
+  <div class="container">
+    <div class="section-head" data-reveal><h2>{s.howTitle}</h2></div>
+    <ol class="ins-steps">
+      {s.steps.map((st, i) => (
+        <li data-reveal style={`transition-delay:${i * 70}ms`}>
+          <span class="ins-steps__n tnum">{i + 1}</span>
+          <h3>{st.title}</h3>
+          <p>{st.text}</p>
+        </li>
+      ))}
+    </ol>
+    <p class="lawyer-mark ins-legal"><TIcon name="info" /> <T text={s.legal} /></p>
+  </div>
+</section>
+
+<section class="section">
+  <div class="container">
+    <SampleDownloads lang={lang} file="inspection-report" preview={pages} title={s.sampleTitle} text={s.sampleText} />
+  </div>
+</section>
+
+<TrustCta lang={lang} />
+
+<style>
+  .ins-mock { background: #fff; border: 1px solid var(--c-line); border-radius: var(--r-xl); padding: var(--sp-5); box-shadow: 0 30px 60px -24px rgb(11 19 36 / .3); max-inline-size: 480px; margin-inline: auto; }
+  .ins-mock__head { display: flex; justify-content: space-between; align-items: center; margin-block-end: var(--sp-3); }
+  .ins-mock__room { display: inline-flex; align-items: center; gap: 8px; font-weight: 700; font-size: var(--fs-md); }
+  .ins-mock__ex { font-size: 11px; font-weight: 800; letter-spacing: .08em; color: #b45309; background: #fff7ed; border: 1px solid #fed7aa; border-radius: 999px; padding: 2px 10px; }
+  .ins-mock__items { list-style: none; margin: 0; padding: 0; display: grid; }
+  .ins-mock__items li { display: flex; justify-content: space-between; gap: var(--sp-3); padding: 10px 0; border-block-end: 1px solid var(--c-line); font-size: var(--fs-sm); }
+  .ins-c { font-size: 12px; font-weight: 700; border-radius: 999px; padding: 2px 10px; }
+  .ins-c--good { background: var(--c-success-50); color: var(--c-success); }
+  .ins-c--fair { background: var(--c-warning-50); color: var(--c-warning); }
+  .ins-c--poor { background: var(--c-error-50); color: var(--c-error); }
+  .ins-mock__photos { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--sp-2); margin-block: var(--sp-4) var(--sp-3); }
+  .ins-mock__photos figure { margin: 0; }
+  .ins-mock__photos img { inline-size: 100%; block-size: auto; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 8px; display: block; }
+  .ins-mock__photos figcaption { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--c-muted); margin-block-start: 4px; }
+  .ins-mock__photos figcaption :global(.icon) { inline-size: 12px; block-size: 12px; }
+  .ins-mock__acks { display: flex; align-items: center; gap: 8px; margin: 0; font-size: var(--fs-xs); font-weight: 600; color: var(--c-success); background: var(--c-success-50); border-radius: 10px; padding: 8px 12px; }
+  .ins-kind p { margin: 0; }
+  .ins-tiers { margin-block-start: var(--sp-5); color: var(--c-muted); font-size: var(--fs-sm); max-inline-size: 80ch; }
+  .ins-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--sp-4); grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); }
+  .ins-steps li { position: relative; background: #fff; border: 1px solid var(--c-line); border-radius: var(--r-lg); padding: var(--sp-5); }
+  .ins-steps__n { display: grid; place-items: center; inline-size: 36px; block-size: 36px; border-radius: 50%; background: var(--c-primary); color: #fff; font-weight: 700; margin-block-end: var(--sp-3); }
+  .ins-steps h3 { font-size: var(--fs-md); }
+  .ins-steps p { margin: 0; font-size: var(--fs-sm); color: var(--c-ink-2); }
+  .ins-legal { display: flex; gap: 6px; align-items: flex-start; margin-block-start: var(--sp-5); max-inline-size: 80ch; }
+</style>

@@ -1,0 +1,35 @@
+---
+// Estratto "incluso vs extra" (illustrazione per la home). La tabella completa è nella pagina Prezzi.
+import Icon from './Icon.astro';
+import { t, type Locale } from '../i18n/config';
+interface Props { lang: Locale }
+const { lang } = Astro.props;
+const d = t(lang);
+const m = d.mock.table;
+const p = d.pages.pricing;
+---
+<figure class="mock-inc">
+  <div class="table-wrap">
+    <table>
+      <caption>{m.caption}</caption>
+      <thead><tr><th scope="col">{m.service}</th><th scope="col">{p.colIncluded}</th></tr></thead>
+      <tbody>
+        {m.rows.map((r) => (
+          <tr>
+            <th scope="row">{r.label}</th>
+            <td>{r.included
+              ? <span class="badge badge--ok"><Icon name="check" /> {p.yes}</span>
+              : <span class="badge badge--no"><Icon name="plus" /> {p.no}</span>}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+  <figcaption>{d.ui.sample}</figcaption>
+</figure>
+<style>
+  .mock-inc { margin: 0; }
+  .mock-inc thead th { white-space: normal; }
+  .mock-inc .table-wrap { box-shadow: var(--sh-md); border-radius: var(--r-xl); }
+  figcaption { text-align: center; font-size: var(--fs-xs); color: var(--c-muted); margin-block-start: var(--sp-3); }
+</style>

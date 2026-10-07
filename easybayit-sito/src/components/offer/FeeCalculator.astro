@@ -1,0 +1,118 @@
+---
+// Calcolatore del costo mensile: affitto → commissione + IVA 18%, in ILS/USD/EUR/GBP.
+// Tassi: rappresentativi Bank of Israel via /api/rates/ (proxy server-side, la API BOI non ha CORS);
+// se non disponibile, tassi di ripiego fissi CON la loro data.
+import { tiers } from '../../data/pricing';
+import { VAT } from '../../data/market';
+import { FALLBACK_RATES } from '../../data/rates';
+import { tx, langMeta, type Locale } from '../../i18n/config';
+import Sources from '../Sources.astro';
+interface Props { lang: Locale }
+const { lang } = Astro.props;
+const x = tx(lang);
+const c = x.offer.calc;
+const names = Object.fromEntries(tiers.map((t) => [t.id, x.offer.tiers[t.id].name]));
+const ctx = { tiers, vat: VAT, rates: FALLBACK_RATES, intl: langMeta[lang].intl, live: x.common.ratesLive, fallback: x.common.ratesFallback };
+---
+<div class="calc card" data-fee-calc data-ctx={JSON.stringify(ctx)}>
+  <div class="calc__inputs">
+    <div class="field">
+      <label for="fc-rent">{c.rentLabel}</label>
+      <div class="calc__rent">
+        <span aria-hidden="true">₪</span>
+        <input class="input tnum" id="fc-rent" type="number" inputmode="numeric" min="0" max="100000" step="100" value="6000" aria-describedby="fc-rent-help" />
+      </div>
+      <input class="calc__range" type="range" min="2000" max="20000" step="100" value="6000" aria-label={c.rentLabel} />
+      <small id="fc-rent-help" class="help">{c.rentHelp}</small>
+    </div>
+    <fieldset class="field">
+      <legend>{x.common.currency}</legend>
+      <div class="calc__cur" role="radiogroup">
+        {['ILS', 'USD', 'EUR', 'GBP'].map((cur, i) => (
+          <label><input type="radio" name="fc-cur" value={cur} checked={i === 0} /><span>{cur}</span></label>
+        ))}
+      </div>
+      <small class="help" data-rate-label aria-live="polite">{x.common.ratesFallback.replace('{date}', FALLBACK_RATES.date)}</small>
+    </fieldset>
+  </div>
+  <div class="table-wrap calc__table" role="region" aria-labelledby="fc-caption" tabindex="0">
+    <table>
+      <caption id="fc-caption" class="visually-hidden">{c.tableCaption}</caption>
+      <thead>
+        <tr><th scope="col"><span class="visually-hidden">{c.tableCaption}</span></th>{tiers.map((t) => <th scope="col" class:list={{ 'is-feat': t.featured }}>{names[t.id]}</th>)}</tr>
+      </thead>
+      <tbody>
+        <tr><th scope="row">{c.fee}</th>{tiers.map((t) => <td class="tnum" data-t={t.id} data-k="net"></td>)}</tr>
+        <tr><th scope="row">{c.vat}</th>{tiers.map((t) => <td class="tnum" data-t={t.id} data-k="vat"></td>)}</tr>
+        <tr class="calc__total"><th scope="row">{c.total}</th>{tiers.map((t) => <td class="tnum" data-t={t.id} data-k="gross"></td>)}</tr>
+        <tr><th scope="row">{c.perYear}</th>{tiers.map((t) => <td class="tnum" data-t={t.id} data-k="year"></td>)}</tr>
+        <tr><th scope="row">{c.net}</th>{tiers.map((t) => <td class="tnum" data-t={t.id} data-k="left"></td>)}</tr>
+        <tr><th scope="row">{c.effective}</th>{tiers.map((t) => <td class="tnum" data-t={t.id} data-k="eff"></td>)}</tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="help">{c.careNote}</p>
+  <Sources lang={lang} ids={['boiRates']} compact />
+</div>
+
+<script>
+  document.querySelectorAll<HTMLElement>('[data-fee-calc]').forEach((root) => {
+    const ctx = JSON.parse(root.dataset.ctx!);
+    const rentIn = root.querySelector<HTMLInputElement>('#fc-rent')!;
+    const range = root.querySelector<HTMLInputElement>('.calc__range')!;
+    const label = root.querySelector<HTMLElement>('[data-rate-label]')!;
+    let rates = ctx.rates;
+    const cur = () => root.querySelector<HTMLInputElement>('input[name=fc-cur]:checked')!.value;
+    const fmt = (ils: number) => {
+      const c = cur();
+      const v = c === 'ILS' ? ils : ils / rates.ilsPer[c];
+      return new Intl.NumberFormat(ctx.intl, { style: 'currency', currency: c, currencyDisplay: 'narrowSymbol', maximumFractionDigits: 0 }).format(v);
+    };
+    const pct = (v: number) => new Intl.NumberFormat(ctx.intl, { style: 'percent', maximumFractionDigits: 1 }).format(v);
+    const render = () => {
+      const rent = Math.max(0, Number(rentIn.value) || 0);
+      for (const t of ctx.tiers) {
+        const net = t.model === 'fixed' ? t.fixedIls : Math.max((rent * t.pct) / 100, t.minIls);
+        const vat = net * ctx.vat, gross = net + vat;
+        const vals: Record<string, string> = {
+          net: fmt(net), vat: fmt(vat), gross: fmt(gross), year: fmt(gross * 12),
+          left: fmt(Math.max(rent - gross, 0)), eff: rent > 0 ? pct(gross / rent) : '—',
+        };
+        for (const [k, v] of Object.entries(vals)) root.querySelector(`[data-t="${t.id}"][data-k="${k}"]`)!.textContent = v;
+      }
+    };
+    rentIn.addEventListener('input', () => { range.value = rentIn.value; render(); });
+    range.addEventListener('input', () => { rentIn.value = range.value; render(); });
+    root.querySelectorAll('input[name=fc-cur]').forEach((r) => r.addEventListener('change', render));
+    render();
+    // Tassi live (proxy server). In caso di errore restano i tassi di ripiego con la loro data.
+    fetch('/api/rates/').then((r) => (r.ok ? r.json() : Promise.reject())).then((d) => {
+      if (!d?.ilsPer?.USD) return;
+      rates = d;
+      label.textContent = (d.source === 'boi' ? ctx.live : ctx.fallback).replace('{date}', String(d.date).slice(0, 10));
+      render();
+    }).catch(() => {});
+  });
+</script>
+
+<style>
+  .calc { display: grid; gap: var(--sp-5); }
+  .calc__inputs { display: grid; gap: var(--sp-5); }
+  @media (min-width: 800px) { .calc__inputs { grid-template-columns: 1fr 1fr; align-items: start; } }
+  fieldset.field { border: 0; margin: 0; padding: 0; }
+  .help { color: var(--c-muted); font-size: var(--fs-xs); }
+  .calc__rent { position: relative; }
+  .calc__rent span { position: absolute; inset-inline-start: 14px; inset-block-start: 50%; transform: translateY(-50%); font-weight: 700; color: var(--c-muted); }
+  .calc__rent .input { padding-inline-start: 34px; font-size: var(--fs-xl); font-weight: 700; }
+  .calc__range { inline-size: 100%; accent-color: var(--c-primary); }
+  .calc__cur { display: flex; gap: 4px; padding: 4px; background: var(--c-surface-2); border-radius: 999px; inline-size: fit-content; }
+  .calc__cur label { position: relative; }
+  .calc__cur input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+  .calc__cur span { display: block; padding: 8px 16px; border-radius: 999px; font-weight: 600; font-size: var(--fs-sm); color: var(--c-ink-2); }
+  .calc__cur input:checked + span { background: #fff; color: var(--c-primary); box-shadow: var(--sh-sm); }
+  .calc__cur input:focus-visible + span { outline: 3px solid var(--c-primary-100); }
+  .calc__table table { inline-size: 100%; min-inline-size: 460px; }
+  .calc__table td, .calc__table thead th { text-align: end; }
+  .calc__table th.is-feat { color: var(--c-primary); }
+  .calc__total th, .calc__total td { font-weight: 700; color: var(--c-ink); background: var(--c-primary-50); }
+</style>

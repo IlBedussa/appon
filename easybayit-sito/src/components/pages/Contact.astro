@@ -1,0 +1,241 @@
+---
+import Icon from '../Icon.astro';
+import T from '../T.astro';
+import PageHero from '../PageHero.astro';
+import { url, t, type Locale } from '../../i18n/config';
+interface Props { lang: Locale }
+const { lang } = Astro.props;
+const d = t(lang);
+const p = d.pages.contact;
+const f = p.form;
+const asideIcons = ['mail', 'phone', 'clock', 'pin'];
+---
+<PageHero eyebrow={p.eyebrow} title={p.h1} lead={p.lead} />
+
+<section class="section">
+  <div class="container contact-grid">
+    <div class="card form-card">
+      <!--
+        Modulo di contatto: validazione lato client + honeypot anti-spam + consenso privacy.
+        Invio: funzione `inviaRichiesta` → /api/lead/ (Resend lato server, modalità mock senza chiave).
+        Senza JavaScript il modulo non invia nulla (nessun "action"), per evitare invii a vuoto.
+      -->
+      <form id="contact-form" novalidate
+        data-err-required={f.errors.required}
+        data-err-email={f.errors.email}
+        data-err-phone={f.errors.phone}
+        data-err-consent={f.errors.consent}
+        data-err-summary={f.errors.summary}
+        data-msg-sending={f.sending}
+        data-msg-success={f.success}
+        data-msg-failure={f.failure}>
+
+        <div class="form-status" id="form-status" role="status" aria-live="polite"></div>
+
+        <div class="form-row">
+          <div class="field">
+            <label for="cf-name">{f.name}<span class="req" aria-hidden="true">*</span></label>
+            <input class="input" id="cf-name" name="name" type="text" autocomplete="name" required minlength="2" maxlength="100" aria-describedby="cf-name-err" />
+            <p class="field-error" id="cf-name-err"></p>
+          </div>
+          <div class="field">
+            <label for="cf-email">{f.email}<span class="req" aria-hidden="true">*</span></label>
+            <input class="input" id="cf-email" name="email" type="email" autocomplete="email" required maxlength="160" dir="ltr" aria-describedby="cf-email-err" />
+            <p class="field-error" id="cf-email-err"></p>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="field">
+            <label for="cf-phone">{f.phone}</label>
+            <input class="input" id="cf-phone" name="phone" type="tel" autocomplete="tel" maxlength="25" dir="ltr" aria-describedby="cf-phone-err" />
+            <p class="field-error" id="cf-phone-err"></p>
+          </div>
+          <div class="field">
+            <label for="cf-role">{f.role}<span class="req" aria-hidden="true">*</span></label>
+            <select class="select" id="cf-role" name="role" required aria-describedby="cf-role-err">
+              <option value="">{f.rolePlaceholder}</option>
+              <option value="owner">{f.roleOptions[0]}</option>
+              <option value="tenant">{f.roleOptions[1]}</option>
+              <option value="other">{f.roleOptions[2]}</option>
+            </select>
+            <p class="field-error" id="cf-role-err"></p>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="cf-city">{f.city}</label>
+          <input class="input" id="cf-city" name="city" type="text" maxlength="100" autocomplete="address-level2" />
+        </div>
+
+        <div class="field">
+          <label for="cf-message">{f.message}<span class="req" aria-hidden="true">*</span></label>
+          <textarea class="textarea" id="cf-message" name="message" required minlength="10" maxlength="3000" aria-describedby="cf-message-err"></textarea>
+          <p class="field-error" id="cf-message-err"></p>
+        </div>
+
+        <!-- Honeypot anti-spam: invisibile agli utenti, i bot tendono a compilarlo. -->
+        <div class="hp" aria-hidden="true">
+          <label for="cf-website">{f.honeypot}</label>
+          <input id="cf-website" name="website" type="text" tabindex="-1" autocomplete="off" />
+        </div>
+
+        <div class="field">
+          <label class="check" for="cf-consent">
+            <input id="cf-consent" name="consent" type="checkbox" required aria-describedby="cf-consent-err" />
+            <span>{f.consentA}<a href={url(lang, 'privacy')}>{f.consentLink}</a> {f.consentB}<span class="req" aria-hidden="true">*</span></span>
+          </label>
+          <p class="field-error" id="cf-consent-err"></p>
+        </div>
+
+        <p class="req-note"><span class="req" aria-hidden="true">*</span> {f.required}</p>
+        <button class="btn btn--primary" type="submit">{f.submit} <Icon name="arrow" /></button>
+      </form>
+    </div>
+
+    <aside class="aside">
+      <h2 class="h3">{p.asideTitle}</h2>
+      <ul class="aside-list">
+        {p.aside.map((a, i) => (
+          <li>
+            <span class="icon-badge"><Icon name={asideIcons[i]} /></span>
+            <span><strong>{a.label}</strong><br /><T text={a.value} /></span>
+          </li>
+        ))}
+      </ul>
+    </aside>
+  </div>
+</section>
+
+<script>
+  /*
+   * MODULO DI CONTATTO — validazione lato client e invio all'endpoint /api/lead/.
+   */
+
+  type DatiContatto = {
+    name: string; email: string; phone: string; role: string; city: string; message: string;
+    consent: boolean; lang: string; page: string;
+  };
+
+  /*
+   * INVIO: POST a /api/lead/ (funzione serverless). L'endpoint rivalida tutto, ripete il controllo
+   * honeypot/tempo minimo e inoltra via Resend; senza RESEND_API_KEY lavora in modalità mock.
+   */
+  import { sendLead } from '../../lib/lead-client';
+  let avvio = Date.now();
+  async function inviaRichiesta(dati: DatiContatto): Promise<void> {
+    const r = await sendLead('contact', dati, avvio);
+    if (!r.ok) throw new Error('invio fallito: ' + r.status);
+  }
+
+  const form = document.getElementById('contact-form') as HTMLFormElement | null;
+  if (form) {
+    const status = document.getElementById('form-status')!;
+    const msg = form.dataset as Record<string, string>;
+    const caricatoIl = avvio; // controllo "tempo minimo": i bot inviano in pochi millisecondi
+    const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+    const phoneRe = /^[+()\d\s.-]{7,25}$/;
+
+    const setError = (el: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement, text: string) => {
+      const err = document.getElementById(`${el.id}-err`);
+      if (err) err.textContent = text;
+      if (text) el.setAttribute('aria-invalid', 'true');
+      else el.removeAttribute('aria-invalid');
+    };
+
+    const validaCampo = (el: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement): boolean => {
+      const v = el.type === 'checkbox' ? '' : el.value.trim();
+      let text = '';
+      if (el.type === 'checkbox') {
+        if (!(el as HTMLInputElement).checked) text = msg.errConsent;
+      } else if (el.required && !v) {
+        text = msg.errRequired;
+      } else if (el.type === 'email' && v && !emailRe.test(v)) {
+        text = msg.errEmail;
+      } else if (el.type === 'tel' && v && !phoneRe.test(v)) {
+        text = msg.errPhone;
+      } else if (v && 'minLength' in el && el.minLength > 0 && v.length < el.minLength) {
+        text = msg.errRequired;
+      }
+      setError(el, text);
+      return !text;
+    };
+
+    const campi = Array.from(form.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>(
+      '#cf-name, #cf-email, #cf-phone, #cf-role, #cf-message, #cf-consent'
+    ));
+    // Se un campo è già segnalato come errato, l'errore si aggiorna mentre l'utente scrive
+    // (così il messaggio sparisce prima del clic successivo, evitando spostamenti del layout).
+    // All'uscita da un campo compilato (blur) si segnala un eventuale formato non valido.
+    campi.forEach((el) => {
+      const ricontrolla = () => { if (el.getAttribute('aria-invalid')) validaCampo(el); };
+      el.addEventListener('input', ricontrolla);
+      el.addEventListener('change', ricontrolla);
+      el.addEventListener('blur', () => { if (el.type !== 'checkbox' && el.value.trim()) validaCampo(el); });
+    });
+
+    const mostra = (type: 'error' | 'success' | 'info' | '', text: string) => {
+      status.dataset.type = type;
+      status.textContent = text;
+    };
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const validi = campi.map(validaCampo).every(Boolean);
+      if (!validi) {
+        mostra('error', msg.errSummary);
+        form.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
+        return;
+      }
+
+      const fd = new FormData(form);
+      // Honeypot compilato o invio troppo rapido: probabile bot → fingiamo successo senza inviare.
+      if (String(fd.get('website') ?? '') !== '' || Date.now() - caricatoIl < 2500) {
+        mostra('success', msg.msgSuccess);
+        form.reset();
+        return;
+      }
+
+      const dati: DatiContatto = {
+        name: String(fd.get('name') ?? '').trim(),
+        email: String(fd.get('email') ?? '').trim(),
+        phone: String(fd.get('phone') ?? '').trim(),
+        role: String(fd.get('role') ?? ''),
+        city: String(fd.get('city') ?? '').trim(),
+        message: String(fd.get('message') ?? '').trim(),
+        consent: fd.get('consent') === 'on',
+        lang: document.documentElement.lang,
+        page: location.pathname,
+      };
+
+      const btn = form.querySelector<HTMLButtonElement>('button[type="submit"]')!;
+      btn.disabled = true;
+      mostra('info', msg.msgSending);
+      try {
+        await inviaRichiesta(dati);
+        mostra('success', msg.msgSuccess);
+        form.reset();
+      } catch {
+        mostra('error', msg.msgFailure);
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  }
+</script>
+
+<style>
+  .contact-grid { display: grid; gap: var(--sp-6); align-items: start; }
+  @media (min-width: 960px) { .contact-grid { grid-template-columns: 1.6fr 1fr; } }
+  .form-card { padding: var(--sp-6) var(--sp-5); }
+  #contact-form { display: grid; gap: var(--sp-4); position: relative; }
+  .form-row { display: grid; gap: var(--sp-4); }
+  @media (min-width: 640px) { .form-row { grid-template-columns: 1fr 1fr; } }
+  .field label.check { font-weight: 400; }
+  .req-note { font-size: var(--fs-xs); color: var(--c-muted); margin: 0; }
+  #contact-form .btn { justify-self: start; }
+  .h3 { font-size: var(--fs-lg); }
+  .aside-list { list-style: none; display: grid; gap: var(--sp-4); }
+  .aside-list li { display: flex; gap: var(--sp-3); align-items: flex-start; }
+  .aside-list .icon-badge { margin: 0; }
+</style>

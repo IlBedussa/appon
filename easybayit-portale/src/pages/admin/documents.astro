@@ -1,0 +1,111 @@
+---
+// Documenti (staff): caricamento diretto su storage (URL firmato), poi verifica del tipo reale/dimensione,
+// impronta SHA-256 e collegamento al record con visibilità per ruolo.
+import AppLayout from '../../layouts/AppLayout.astro';
+import Field from '../../components/Field.astro';
+import Csrf from '../../components/Csrf.astro';
+import Icon from '../../components/Icon.astro';
+import Pill from '../../components/Pill.astro';
+import UploadField from '../../components/UploadField.astro';
+import { z, formToObject, optUuid, checkbox, optIsoDate } from '../../lib/validation';
+import { adminClient } from '../../lib/supabase';
+import { fill } from '../../i18n';
+import { finalizeUploads, uploadIdsFrom } from '../../lib/direct-upload';
+import { setFlash } from '../../lib/flash';
+import { bytes, date } from '../../lib/format';
+
+const { t, supabase, user, intl, profile } = Astro.locals;
+const cats = ['lease', 'insurance', 'gas_safety', 'boiler_service', 'invoice', 'statement', 'photo', 'report', 'other'] as const;
+let errors: Record<string, string> = {};
+if (Astro.request.method === 'POST') {
+  const fd = await Astro.request.formData();
+  if (fd.get('action') === 'reminders') {
+    // esecuzione manuale del job promemoria (normalmente giornaliero via cron)
+    const { data: n } = await adminClient().rpc('run_expiry_reminders', { p_lease_days: 90 });
+    setFlash(Astro.cookies, 'success', fill(t.pri.remindersRun, { n: n ?? 0 }));
+    return Astro.redirect('/admin/documents', 303);
+  }
+  if (fd.get('action') === 'delete') {
+    const did = z.uuid().safeParse(fd.get('id'));
+    if (did.success) {
+      const { data: d } = await supabase.from('documents').select('storage_path').eq('id', did.data).maybeSingle();
+      if (d) { await supabase.storage.from('documents').remove([d.storage_path]); await supabase.from('documents').delete().eq('id', did.data); }
+    }
+    setFlash(Astro.cookies, 'success', t.admin.deleted);
+    return Astro.redirect('/admin/documents', 303);
+  }
+  const p = z.object({
+    title: z.string().trim().min(1).max(200), category: z.enum(cats), property_id: optUuid, owner_id: optUuid, tenant_id: optUuid, lease_id: optUuid,
+    visible_to_owner: checkbox, visible_to_tenant: checkbox, expires_on: optIsoDate, remind_days: z.coerce.number().int().min(1).max(365).default(30),
+  }).safeParse(formToObject(fd));
+  // il file è già stato caricato dal browser sullo storage (URL firmato): qui arriva solo l'id
+  const ids = uploadIdsFrom(fd);
+  if (ids.length !== 1) errors.file = t.admin.docs.badType;
+  if (!p.success) errors._ = t.common.invalid;
+  if (p.success && ids.length === 1) {
+    const r = await finalizeUploads({ sb: supabase, userId: user!.id, role: profile!.role }, {
+      kind: 'document',
+      meta: { ...p.data, property_id: p.data.property_id ?? null, owner_id: p.data.owner_id ?? null, tenant_id: p.data.tenant_id ?? null, lease_id: p.data.lease_id ?? null, expires_on: p.data.expires_on ?? null },
+    }, ids);
+    if (r.ok.length) { setFlash(Astro.cookies, 'success', t.admin.docs.uploaded); return Astro.redirect('/admin/documents', 303); }
+    const reason = r.rejected[0]?.reason;
+    if (reason === 'size') errors.file = t.admin.docs.tooBig;
+    else if (reason === 'type' || reason === 'mismatch' || reason === 'missing') errors.file = t.admin.docs.badType;
+    else errors._ = t.common.error;
+  }
+}
+const [{ data: docs }, { data: props }, { data: owners }, { data: tenants }, { data: leases }] = await Promise.all([
+  supabase.from('documents').select('id, title, category, size_bytes, mime_type, created_at, expires_on, visible_to_owner, visible_to_tenant, property:properties(code), owner:owners(full_name), tenant:tenants(full_name)').order('created_at', { ascending: false }).limit(300),
+  supabase.from('properties').select('id, code, name').order('code'),
+  supabase.from('owners').select('id, full_name').order('full_name'),
+  supabase.from('tenants').select('id, full_name').order('full_name'),
+  supabase.from('leases').select('id, start_date, property:properties(code), tenant:tenants(full_name)').order('start_date', { ascending: false }),
+]);
+const none = { value: '', label: '—' };
+---
+<AppLayout title={t.docs.title} active="documents">
+  <details class="create" open={Object.keys(errors).length > 0}>
+    <summary><Icon name="upload" /> {t.admin.docs.upload}</summary>
+    <div class="create-body">
+      {Object.keys(errors).length > 0 && <p class="form-status" data-type="error" role="alert">{errors._ ?? errors.file}</p>}
+      <form method="post" class="form-grid">
+        <Csrf />
+        <Field name="title" label={t.admin.docs.title} required maxlength={200} />
+        <Field name="category" label={t.docs.category} required options={cats.map((c) => ({ value: c, label: t.docCat[c] }))} />
+        <Field name="property_id" label={t.common.property} options={[none, ...(props ?? []).map((p) => ({ value: p.id, label: `${p.code} · ${p.name}` }))]} />
+        <Field name="owner_id" label={t.common.owner} options={[none, ...(owners ?? []).map((o) => ({ value: o.id, label: o.full_name }))]} />
+        <Field name="tenant_id" label={t.common.tenant} options={[none, ...(tenants ?? []).map((o) => ({ value: o.id, label: o.full_name }))]} />
+        <Field name="lease_id" label={t.admin.fields.lease_id} options={[none, ...(leases ?? []).map((l) => ({ value: l.id, label: `${(l.property as any)?.code} · ${(l.tenant as any)?.full_name} · ${l.start_date}` }))]} />
+        <Field name="expires_on" type="date" label={t.pri.expiresOn} />
+        <Field name="remind_days" type="number" min="1" max="365" step="1" label={t.pri.remindDays} value="30" required />
+        <Field name="visible_to_owner" type="checkbox" label={t.admin.docs.visibleOwner} checked />
+        <Field name="visible_to_tenant" type="checkbox" label={t.admin.docs.visibleTenant} />
+        <UploadField name="file" kind="document" label={t.admin.docs.file} required hint={t.admin.docs.fileHint} error={errors.file} class="span-2" />
+        <div class="form-actions span-2"><button class="btn btn--primary btn--sm" type="submit"><Icon name="upload" /> {t.admin.docs.upload}</button></div>
+      </form>
+    </div>
+  </details>
+  <form method="post" class="filters"><Csrf /><input type="hidden" name="action" value="reminders" />
+    <button class="btn btn--secondary btn--sm" type="submit"><Icon name="clock" /> {t.pri.expiries} → {t.common.submit}</button></form>
+  <div class="table-wrap dtable dcard flush">
+    <table>
+      <caption class="visually-hidden">{t.docs.title}</caption>
+      <thead><tr><th scope="col">{t.admin.docs.title}</th><th scope="col">{t.docs.category}</th><th scope="col">{t.common.property}</th><th scope="col">{t.admin.docs.visibleOwner}</th><th scope="col">{t.admin.docs.visibleTenant}</th><th scope="col">{t.pri.expiresOn}</th><th scope="col">{t.common.actions}</th></tr></thead>
+      <tbody>
+        {(docs ?? []).map((d) => (
+          <tr>
+            <th scope="row"><a href={`/files/document/${d.id}`}>{d.title}</a><small class="muted"> · {bytes(d.size_bytes)}</small></th>
+            <td>{(t.docCat as Record<string, string>)[d.category]}</td>
+            <td>{(d.property as any)?.code ?? (d.owner as any)?.full_name ?? '—'}</td>
+            <td>{d.visible_to_owner ? <Pill tone="ok">{t.common.yes}</Pill> : t.common.no}</td>
+            <td>{d.visible_to_tenant ? <Pill tone="ok">{t.common.yes}</Pill> : t.common.no}</td>
+            <td class="nowrap">{d.expires_on ? date(d.expires_on, intl) : '—'}</td>
+            <td><details class="confirm-box"><summary class="btn btn--secondary btn--xs">{t.common.delete}</summary>
+              <form method="post"><Csrf /><input type="hidden" name="action" value="delete" /><input type="hidden" name="id" value={d.id} />
+                <button class="btn btn--danger btn--xs" type="submit">{t.common.confirm}</button></form></details></td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+</AppLayout>

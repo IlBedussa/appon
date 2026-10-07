@@ -1,0 +1,65 @@
+---
+// Indice città: affitto medio CBS (con fonte) e acquisti di residenti esteri (con fonte).
+import Icon from '../Icon.astro';
+import T from '../T.astro';
+import PageHero from '../PageHero.astro';
+import CtaBand from '../CtaBand.astro';
+import Sources from '../Sources.astro';
+import { cityData, foreignBuyers2025, rentQ1_2026 } from '../../data/market';
+import { url, tx, langMeta, cityKeys, type Locale, type PageKey } from '../../i18n/config';
+interface Props { lang: Locale }
+const { lang } = Astro.props;
+const x = tx(lang);
+const c = x.cities;
+const nf = new Intl.NumberFormat(langMeta[lang].intl, { maximumFractionDigits: 0 });
+const fill = (s: string, v: Record<string, string>) => s.replace(/\{(\w+)\}/g, (_, k) => v[k] ?? '');
+---
+<PageHero eyebrow={c.eyebrow} title={c.h1} lead={c.lead} />
+<section class="section">
+  <div class="container">
+    <ul class="city-list">
+      {cityKeys.map((k, i) => {
+        const it = c.items[k];
+        const d = cityData[k];
+        const fb = foreignBuyers2025[k];
+        return (
+          <li class="card city-card" data-reveal style={`transition-delay:${i * 60}ms`}>
+            <h2><a href={url(lang, `city-${k}` as PageKey)}>{it.name}</a></h2>
+            <p>{it.lead}</p>
+            <dl>
+              <div>
+                <dt>{d.rent ? c.avgRent : fill(c.avgRentDistrict, { district: (c.districts as Record<string, string>)[d.district] ?? d.district })}</dt>
+                <dd class="tnum" dir="ltr">₪{nf.format(d.rent ?? rentQ1_2026.districts[d.district])}</dd>
+              </div>
+              <div>
+                <dt>{c.foreignBuyers}</dt>
+                <dd class="tnum">{fb != null ? nf.format(fb) : <small>{c.notPublished}</small>}</dd>
+              </div>
+            </dl>
+            <p class="city-card__cov"><T text={fill(c.coverage, { city: it.name })} /></p>
+            <span class="city-card__more" aria-hidden="true">{x.common.learnMore} <Icon name="arrow" /></span>
+          </li>
+        );
+      })}
+    </ul>
+    <Sources lang={lang} ids={['cbsRentQ1_2026', 'mofForeignBuyers2025']} />
+  </div>
+</section>
+<CtaBand lang={lang} />
+<style>
+  .city-list { list-style: none; padding: 0; display: grid; gap: var(--sp-5); }
+  @media (min-width: 760px) { .city-list { grid-template-columns: 1fr 1fr; } }
+  @media (min-width: 1100px) { .city-list { grid-template-columns: repeat(3, 1fr); } }
+  .city-card { position: relative; display: flex; flex-direction: column; gap: var(--sp-2); transition: box-shadow .2s, transform .2s; }
+  .city-card:hover { box-shadow: var(--sh-md); transform: translateY(-2px); }
+  .city-card h2 { font-size: var(--fs-xl); margin: 0; }
+  .city-card h2 a { text-decoration: none; color: var(--c-ink); }
+  .city-card h2 a::after { content: ''; position: absolute; inset: 0; border-radius: inherit; }
+  .city-card p { color: var(--c-ink-2); margin: 0; }
+  .city-card dl { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-3); margin: var(--sp-3) 0; }
+  .city-card dt { font-size: var(--fs-xs); color: var(--c-muted); }
+  .city-card dd { margin: 0; font-size: var(--fs-xl); font-weight: 700; color: var(--c-primary); }
+  .city-card dd small { font-size: var(--fs-xs); color: var(--c-muted); font-weight: 500; }
+  .city-card__cov { font-size: var(--fs-sm); }
+  .city-card__more { margin-block-start: auto; display: inline-flex; gap: 6px; align-items: center; color: var(--c-primary); font-weight: 600; }
+</style>

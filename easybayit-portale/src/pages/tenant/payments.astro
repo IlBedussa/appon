@@ -1,0 +1,11 @@
+---
+import AppLayout from '../../layouts/AppLayout.astro';
+import PaymentsTable from '../../components/PaymentsTable.astro';
+import Icon from '../../components/Icon.astro';
+const { t, supabase } = Astro.locals;
+const { data } = await supabase.from('payments').select('id, paid_on, period, amount_ils, kind, method, status, reference, property:properties(code, name)').order('paid_on', { ascending: false }).limit(200);
+---
+<AppLayout title={t.pay.title} active="payments">
+  <p class="notice notice--info"><Icon name="info" /> <span>{t.pay.noOnline}</span></p>
+  <PaymentsTable rows={(data ?? []) as any} showTenant={false} />
+</AppLayout>

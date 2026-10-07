@@ -1,0 +1,740 @@
+---
+// DASHBOARD DEMO PROPRIETARI — solo front-end, dati FITTIZI (src/data/demo.ts).
+// Nessuna chiamata di rete, nessun dato salvato (solo preferenze tema/valuta in localStorage).
+// Struttura: barra laterale + pannelli; senza JS tutti i pannelli restano visibili in sequenza.
+import '../../styles/dashboard.css';
+import Icon from '../Icon.astro';
+import T from '../T.astro';
+import { url, t, td, langMeta, type Locale } from '../../i18n/config';
+import {
+  demoRates, months, income, expenses, properties, statements, requests, quote, documents, payments, nextPayout, type PropId,
+} from '../../data/demo';
+
+interface Props { lang: Locale }
+const { lang } = Astro.props;
+const d = td(lang);
+const g = t(lang);
+const intl = langMeta[lang].intl;
+
+// --- Helper di formattazione (stessa logica del JS client, così senza JS si vede comunque ILS) ---
+const money = (v: number, signed = false) => {
+  const s = new Intl.NumberFormat(intl, { style: 'currency', currency: 'ILS', currencyDisplay: 'narrowSymbol', maximumFractionDigits: 0 }).format(Math.abs(v));
+  return signed ? (v < 0 ? '−' : '+') + '\u2009' + s : (v < 0 ? '−' : '') + s;
+};
+const compact = (v: number) => new Intl.NumberFormat(intl, { style: 'currency', currency: 'ILS', currencyDisplay: 'narrowSymbol', notation: 'compact', maximumFractionDigits: 0 }).format(v);
+const date = (iso: string, o: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short', year: 'numeric' }) =>
+  new Intl.DateTimeFormat(intl, { ...o, timeZone: 'UTC' }).format(new Date(iso + (iso.length === 7 ? '-01' : '') + 'T00:00:00Z'));
+const monthShort = (ym: string) => date(ym, { month: 'short' });
+const monthLong = (ym: string) => date(ym, { month: 'long', year: 'numeric' });
+const fill = (s: string, o: Record<string, string | number>) => s.replace(/\{(\w+)\}/g, (_, k) => String(o[k] ?? ''));
+const pname = (id?: PropId) => (id ? d.props[id] : '—');
+const tenantOf = (id: PropId) => (d.tenant as Record<string, string>)[id] ?? '—';
+
+const navItems = [
+  ['overview', 'chart'], ['properties', 'key'], ['statement', 'doc'], ['maintenance', 'tool'], ['documents', 'paperclip'],
+  ['leases', 'user'], ['payments', 'wallet'], ['messages', 'mail'], ['notifications', 'info'], ['security', 'shield'],
+] as const;
+
+// --- KPI ---
+const sep = statements['2026-09'];
+const rentCollected = sep.filter((r) => r.key === 'rent').reduce((a, r) => a + r.amount, 0);
+const let_ = properties.filter((p) => p.status !== 'vacant').length;
+const occupancy = Math.round((let_ / properties.length) * 100);
+const openReq = requests.filter((r) => r.step < 5).length;
+const unreadCount = d.notifications.items.filter((n) => n.unread).length;
+
+// --- Grafico entrate/uscite (SVG) ---
+const W = 640, H = 260, PL = 56, PR = 12, PT = 16, PB = 30;
+const plotW = W - PL - PR, plotH = H - PT - PB;
+const yMax = 24000;
+const yTicks = [0, 6000, 12000, 18000, 24000];
+const gw = plotW / months.length;
+const bw = gw * 0.3;
+const y = (v: number) => PT + plotH - (v / yMax) * plotH;
+
+// --- Flusso di cassa cumulato ---
+const nets = income.map((v, i) => v - expenses[i]);
+const cum = nets.reduce<number[]>((a, v) => [...a, (a.at(-1) ?? 0) + v], []);
+const cMax = 200000;
+const cTicks = [0, 50000, 100000, 150000, 200000];
+const cy = (v: number) => PT + plotH - (v / cMax) * plotH;
+const cx = (i: number) => PL + gw * i + gw / 2;
+const linePath = cum.map((v, i) => `${i ? 'L' : 'M'}${cx(i).toFixed(1)},${cy(v).toFixed(1)}`).join(' ');
+const areaPath = `${linePath} L${cx(cum.length - 1).toFixed(1)},${cy(0)} L${cx(0).toFixed(1)},${cy(0)} Z`;
+
+// --- Rendiconti ---
+const stMonths = Object.keys(statements);
+const totals = (m: string) => {
+  const rows = statements[m];
+  const inc = rows.filter((r) => r.amount > 0).reduce((a, r) => a + r.amount, 0);
+  const exp = rows.filter((r) => r.amount < 0).reduce((a, r) => a + r.amount, 0);
+  return { inc, exp, net: inc + exp };
+};
+
+// --- Contratti: giorni alla scadenza (calcolati anche lato client con la data reale) ---
+const today = new Date();
+const daysTo = (iso: string) => Math.max(0, Math.ceil((new Date(iso + 'T00:00:00Z').getTime() - today.getTime()) / 86400000));
+const pct = (s: string, e: string) => {
+  const a = new Date(s).getTime(), b = new Date(e).getTime();
+  return Math.min(100, Math.max(0, Math.round(((today.getTime() - a) / (b - a)) * 100)));
+};
+const spark = (v: number[]) => v.map((n, i) => `${(i * (100 / (v.length - 1))).toFixed(1)},${(28 - n * 3).toFixed(1)}`).join(' ');
+---
+<div class="dash" id="dash" data-theme="light" data-intl={intl} data-rates={JSON.stringify(demoRates)}>
+  <p class="dash-banner" role="note"><span class="dash-badge"><Icon name="info" /> {d.badge}</span> {d.banner}</p>
+
+  <div class="dash-shell">
+    <!-- ===== BARRA LATERALE ===== -->
+    <aside class="dash-side">
+      <div class="dash-owner">
+        <span class="dash-avatar" aria-hidden="true">DO</span>
+        <span><strong>{d.owner}</strong><small>{d.badge}</small></span>
+      </div>
+      <nav aria-label={d.navLabel}>
+        <ul class="dash-nav">
+          {navItems.map(([id, icon]) => (
+            <li>
+              <a href={`#${id}`} data-nav={id}>
+                <Icon name={icon} /> <span>{d.nav[id]}</span>
+                {id === 'notifications' && <span class="dash-count" data-unread-count>{unreadCount}</span>}
+              </a>
+            </li>
+          ))}
+        </ul>
+      </nav>
+      <a class="dash-back" href={url(lang, 'portal')}><Icon name="arrow" class="flip-back" /> {d.back}</a>
+    </aside>
+
+    <div class="dash-main">
+      <!-- ===== BARRA SUPERIORE ===== -->
+      <header class="dash-top">
+        <div>
+          <p class="dash-hello">{d.hello}, {d.owner}</p>
+          <h1 class="dash-title" data-panel-title>{d.nav.overview}</h1>
+        </div>
+        <div class="dash-tools">
+          <div class="seg" role="group" aria-label={d.currency} title={d.ratesNote}>
+            {(['ILS', 'USD', 'EUR'] as const).map((c) => (
+              <button type="button" data-currency={c} aria-pressed={c === 'ILS' ? 'true' : 'false'}>{c}</button>
+            ))}
+          </div>
+          <button type="button" class="icon-btn" data-theme-toggle aria-pressed="false" aria-label={d.theme.toDark}
+            data-label-dark={d.theme.toDark} data-label-light={d.theme.toLight}>
+            <svg class="icon i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 13a9 9 0 1 1-10-10 7 7 0 0 0 10 10z"/></svg>
+            <svg class="icon i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+          </button>
+          <a href="#notifications" class="icon-btn bell" data-nav="notifications" aria-label={d.openNotifications}>
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 8 3 8H3s3-1 3-8M10 21a2 2 0 0 0 4 0"/></svg>
+            <span class="bell-dot" data-unread-count>{unreadCount}</span>
+          </a>
+        </div>
+      </header>
+      <p class="dash-rates"><Icon name="info" /> {d.ratesNote}</p>
+
+      <!-- ===== PANORAMICA ===== -->
+      <section class="dash-panel" id="panel-overview" data-panel="overview" aria-labelledby="h-overview">
+        <h2 class="visually-hidden" id="h-overview">{d.nav.overview}</h2>
+        <div class="kpis">
+          <div class="kpi">
+            <p class="kpi-label"><Icon name="wallet" /> {d.kpi.rent}</p>
+            <p class="kpi-value"><span class="money" data-ils={rentCollected}>{money(rentCollected)}</span></p>
+            <p class="kpi-sub ok">{d.kpi.rentSub}</p>
+            <span class="dash-badge sm">{d.badge}</span>
+          </div>
+          <div class="kpi">
+            <p class="kpi-label"><Icon name="key" /> {d.kpi.occupancy}</p>
+            <p class="kpi-value">{new Intl.NumberFormat(intl, { style: 'percent' }).format(occupancy / 100)}</p>
+            <div class="meter" aria-hidden="true"><span style={`inline-size:${occupancy}%`}></span></div>
+            <p class="kpi-sub">{fill(d.kpi.occupancySub, { a: let_, b: properties.length })}</p>
+            <span class="dash-badge sm">{d.badge}</span>
+          </div>
+          <div class="kpi">
+            <p class="kpi-label"><Icon name="tool" /> {d.kpi.maint}</p>
+            <p class="kpi-value">{openReq}</p>
+            <p class="kpi-sub warn">{d.kpi.maintSub}</p>
+            <span class="dash-badge sm">{d.badge}</span>
+          </div>
+          <div class="kpi kpi--accent">
+            <p class="kpi-label"><Icon name="arrow" /> {d.kpi.payout}</p>
+            <p class="kpi-value"><span class="money" data-ils={nextPayout.amount}>{money(nextPayout.amount)}</span></p>
+            <p class="kpi-sub">{fill(d.kpi.payoutSub, { d: date(nextPayout.date, { day: 'numeric', month: 'long' }) })}</p>
+            <span class="dash-badge sm">{d.badge}</span>
+          </div>
+        </div>
+
+        <div class="charts">
+          <figure class="dcard chart" data-chart="ie">
+            <figcaption class="dcard-head">
+              <span><strong>{d.charts.ie}</strong><small>{d.charts.ieSub}</small></span>
+              <span class="legend"><i class="lg-inc"></i>{d.charts.income} <i class="lg-exp"></i>{d.charts.expenses}</span>
+            </figcaption>
+            <div class="chart-wrap" dir="ltr">
+              <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={d.charts.summary}>
+                {yTicks.map((v) => (
+                  <g>
+                    <line x1={PL} x2={W - PR} y1={y(v)} y2={y(v)} class="grid-line" />
+                    <text x={PL - 8} y={y(v) + 4} text-anchor="end" class="axis money" data-ils={v} data-compact="1">{compact(v)}</text>
+                  </g>
+                ))}
+                {months.map((m, i) => (
+                  <g class="bar-group" data-i={i} data-month={monthLong(m)} data-inc={income[i]} data-exp={expenses[i]}>
+                    <rect class="hit" x={PL + gw * i} y={PT} width={gw} height={plotH} />
+                    <rect class="bar bar-inc" x={PL + gw * i + gw / 2 - bw - 1} y={y(income[i])} width={bw} height={plotH + PT - y(income[i])} rx="3" style={`animation-delay:${i * 40}ms`} />
+                    <rect class="bar bar-exp" x={PL + gw * i + gw / 2 + 1} y={y(expenses[i])} width={bw} height={plotH + PT - y(expenses[i])} rx="3" style={`animation-delay:${i * 40 + 20}ms`} />
+                    <text x={PL + gw * i + gw / 2} y={H - 10} text-anchor="middle" class="axis">{monthShort(m)}</text>
+                  </g>
+                ))}
+              </svg>
+              <div class="tip" role="status" aria-live="polite" hidden></div>
+            </div>
+            <table class="visually-hidden">
+              <caption>{d.charts.ie} · {d.badge}</caption>
+              <thead><tr><th scope="col">{d.statement.month}</th><th scope="col">{d.charts.income}</th><th scope="col">{d.charts.expenses}</th></tr></thead>
+              <tbody>{months.map((m, i) => <tr><th scope="row">{monthLong(m)}</th><td>{money(income[i])}</td><td>{money(expenses[i])}</td></tr>)}</tbody>
+            </table>
+          </figure>
+
+          <figure class="dcard chart">
+            <figcaption class="dcard-head">
+              <span><strong>{d.charts.cf}</strong><small>{d.charts.cfSub}</small></span>
+              <span class="cf-total"><span class="money" data-ils={cum.at(-1)}>{money(cum.at(-1) ?? 0)}</span></span>
+            </figcaption>
+            <div class="chart-wrap" dir="ltr">
+              <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`${d.charts.cf} · ${d.badge}`}>
+                <defs>
+                  <linearGradient id="cfg" x1="0" x2="0" y1="0" y2="1">
+                    <stop offset="0%" class="cf-stop1" />
+                    <stop offset="100%" class="cf-stop2" />
+                  </linearGradient>
+                </defs>
+                {cTicks.map((v) => (
+                  <g>
+                    <line x1={PL} x2={W - PR} y1={cy(v)} y2={cy(v)} class="grid-line" />
+                    <text x={PL - 8} y={cy(v) + 4} text-anchor="end" class="axis money" data-ils={v} data-compact="1">{compact(v)}</text>
+                  </g>
+                ))}
+                <path d={areaPath} fill="url(#cfg)" class="cf-area" />
+                <path d={linePath} class="cf-line" pathLength="1" />
+                {cum.map((v, i) => (
+                  <g>
+                    <circle cx={cx(i)} cy={cy(v)} r="4" class="cf-dot"><title>{monthLong(months[i])}: {money(v)}</title></circle>
+                    <text x={cx(i)} y={H - 10} text-anchor="middle" class="axis">{monthShort(months[i])}</text>
+                  </g>
+                ))}
+              </svg>
+            </div>
+          </figure>
+        </div>
+
+        <div class="dcard">
+          <div class="dcard-head"><strong>{d.nav.properties}</strong><a href="#properties" data-nav="properties" class="link-sm">{g.ui.learnMore} <Icon name="arrow" /></a></div>
+          <ul class="prop-rows">
+            {properties.map((p) => (
+              <li>
+                <span class="prop-ico" aria-hidden="true">{p.id}</span>
+                <span class="prop-name"><strong>{pname(p.id)}</strong><small>{fill(d.props.addr, { n: p.rooms * 3 + 1 })}</small></span>
+                <span class={`pill pill--${p.status}`}>{d.status[p.status]}</span>
+                <span class="prop-rent"><span class="money" data-ils={p.rent}>{money(p.rent)}</span></span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </section>
+
+      <!-- ===== IMMOBILI ===== -->
+      <section class="dash-panel" id="panel-properties" data-panel="properties" aria-labelledby="h-properties">
+        <h2 class="panel-h" id="h-properties">{d.nav.properties} <span class="dash-badge sm">{d.badge}</span></h2>
+        <div class="prop-grid">
+          {properties.map((p) => (
+            <article class="dcard prop-card">
+              <div class="prop-visual" aria-hidden="true">
+                <svg viewBox="0 0 100 30" preserveAspectRatio="none"><polyline points={spark(p.spark)} /></svg>
+                <span class="prop-letter">{p.id}</span>
+              </div>
+              <h3>{pname(p.id)}</h3>
+              <p class="muted">{fill(d.props.addr, { n: p.rooms * 3 + 1 })} · {fill(d.props.rooms, { n: p.rooms })}</p>
+              <span class={`pill pill--${p.status}`}>{d.status[p.status]}</span>
+              <dl class="kv">
+                <div><dt>{p.status === 'vacant' ? d.propCols.asking : d.propCols.rent}</dt><dd><span class="money" data-ils={p.rent}>{money(p.rent)}</span></dd></div>
+                <div><dt>{d.propCols.leaseEnd}</dt><dd>{p.leaseEnd ? date(p.leaseEnd) : '—'}</dd></div>
+                <div><dt>{d.propCols.tenant}</dt><dd>{p.status === 'vacant' ? '—' : tenantOf(p.id)}</dd></div>
+              </dl>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <!-- ===== RENDICONTI ===== -->
+      <section class="dash-panel" id="panel-statement" data-panel="statement" aria-labelledby="h-statement">
+        <div class="panel-bar">
+          <h2 class="panel-h" id="h-statement">{d.statement.title} <span class="dash-badge sm">{d.badge}</span></h2>
+          <div class="panel-actions">
+            <label class="visually-hidden" for="st-month">{d.statement.month}</label>
+            <select id="st-month" class="select dsel" data-st-select>
+              {stMonths.map((m) => <option value={m}>{monthLong(m)}</option>)}
+            </select>
+            <!-- Segnaposto: il PDF verrà generato dal backend del portale. Pulsante volutamente non funzionante. -->
+            <button type="button" class="btn btn--primary btn--sm" aria-disabled="true" data-demo-msg={d.statement.downloadNote}><Icon name="download" /> {d.statement.download}</button>
+          </div>
+        </div>
+        <p class="demo-msg" role="status" aria-live="polite" data-demo-out></p>
+        {stMonths.map((m, idx) => {
+          const tt = totals(m);
+          return (
+            <div class="dcard st" data-st={m} hidden={idx !== 0 ? true : undefined}>
+              <div class="st-sum">
+                <div><small>{d.statement.income}</small><strong class="pos"><span class="money" data-ils={tt.inc}>{money(tt.inc)}</span></strong></div>
+                <div><small>{d.statement.expenses}</small><strong><span class="money" data-ils={tt.exp}>{money(tt.exp)}</span></strong></div>
+                <div class="st-net"><small>{d.statement.net}</small><strong><span class="money" data-ils={tt.net}>{money(tt.net)}</span></strong></div>
+              </div>
+              <div class="table-wrap dtable">
+                <table>
+                  <caption class="visually-hidden">{d.statement.title} · {monthLong(m)}</caption>
+                  <thead><tr><th scope="col">{d.statement.date}</th><th scope="col">{d.statement.item}</th><th scope="col">{d.statement.property}</th><th scope="col">{d.statement.doc}</th><th scope="col" class="num">{d.statement.amount}</th></tr></thead>
+                  <tbody>
+                    {statements[m].map((r) => (
+                      <tr>
+                        <td class="nowrap">{date(r.date, { day: 'numeric', month: 'short' })}</td>
+                        <th scope="row">{d.statement.items[r.key]}</th>
+                        <td>{pname(r.prop)}</td>
+                        <td><span class="doc-chip"><Icon name="paperclip" /> {d.statement.attached}</span></td>
+                        <td class={`num ${r.amount > 0 ? 'pos' : ''}`}><span class="money" data-ils={r.amount} data-signed="1">{money(r.amount, true)}</span></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot><tr><th scope="row" colspan="4">{d.statement.net}</th><td class="num"><strong><span class="money" data-ils={tt.net}>{money(tt.net)}</span></strong></td></tr></tfoot>
+                </table>
+              </div>
+            </div>
+          );
+        })}
+      </section>
+
+      <!-- ===== MANUTENZIONE ===== -->
+      <section class="dash-panel" id="panel-maintenance" data-panel="maintenance" aria-labelledby="h-maint">
+        <h2 class="panel-h" id="h-maint">{d.maint.title} <span class="dash-badge sm">{d.badge}</span></h2>
+        <div class="maint">
+          <ul class="req-list">
+            {requests.map((r, i) => (
+              <li>
+                <button type="button" class="req" data-req={r.id} aria-pressed={i === 0 ? 'true' : 'false'}>
+                  <span class="req-top"><strong>{d.maint.req[r.key]}</strong><span class={`pill ${r.priority === 'urgent' ? 'pill--urgent' : 'pill--neutral'}`}>{r.priority === 'urgent' ? d.maint.urgent : d.maint.normal}</span></span>
+                  <small>{r.id} · {pname(r.prop)}</small>
+                  <span class="req-status" data-req-status={r.id}>{d.maint.statusLabel[r.step - 1]}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+          <div class="req-detail">
+            {requests.map((r, i) => (
+              <div class="dcard" data-req-panel={r.id} hidden={i !== 0 ? true : undefined}>
+                <div class="dcard-head"><span><strong>{d.maint.req[r.key]}</strong><small>{r.id} · {pname(r.prop)} · {fill(d.maint.opened, { d: date(r.opened, { day: 'numeric', month: 'short' }) })}</small></span></div>
+                <ol class="dtl" data-timeline={r.id} data-step={r.step}>
+                  {d.maint.steps.map((s, k) => (
+                    <li class={k < r.step - 1 || r.step === 5 ? 'done' : k === r.step - 1 ? 'now' : 'todo'}>
+                      <span class="dtl-dot">{k < r.step - 1 || r.step === 5 ? <Icon name="check" /> : k + 1}</span>
+                      <span>{s}</span>
+                    </li>
+                  ))}
+                </ol>
+                {r.id === quote.request && (
+                  <div class="quote" data-quote data-state="idle"
+                    data-label-quote={d.maint.statusLabel[2]} data-label-scheduled={d.maint.statusLabel[3]} data-label-review={d.maint.statusLabel[1]}>
+                    <div class="quote-head"><Icon name="doc" /><span><strong>{d.maint.quote}</strong><small>{d.maint.supplier}</small></span></div>
+                    <ul class="quote-rows">
+                      {d.maint.qItems.map((q, k) => <li><span>{q}</span><span class="money" data-ils={quote.items[k]}>{money(quote.items[k])}</span></li>)}
+                      <li class="quote-total"><span>{d.maint.total}</span><span class="money" data-ils={quote.total}>{money(quote.total)}</span></li>
+                    </ul>
+                    <div class="q-state q-idle">
+                      <button type="button" class="btn btn--sm q-approve" data-q="ask-approve"><Icon name="check" /> {d.maint.approve}</button>
+                      <button type="button" class="btn btn--secondary btn--sm" data-q="ask-reject"><Icon name="x" /> {d.maint.reject}</button>
+                    </div>
+                    <div class="q-state q-confirm-approve" role="alertdialog" aria-label={d.maint.confirmApprove}>
+                      <p>{d.maint.confirmApprove}</p>
+                      <button type="button" class="btn btn--sm q-approve" data-q="approve">{d.maint.confirm}</button>
+                      <button type="button" class="btn btn--secondary btn--sm" data-q="cancel">{d.maint.cancel}</button>
+                    </div>
+                    <div class="q-state q-confirm-reject" role="alertdialog" aria-label={d.maint.confirmReject}>
+                      <p>{d.maint.confirmReject}</p>
+                      <button type="button" class="btn btn--sm q-reject" data-q="reject">{d.maint.confirm}</button>
+                      <button type="button" class="btn btn--secondary btn--sm" data-q="cancel">{d.maint.cancel}</button>
+                    </div>
+                    <div class="q-state q-approved"><p class="q-result ok"><Icon name="check" /> {d.maint.approved}</p><button type="button" class="link-btn" data-q="undo">{d.maint.undo}</button></div>
+                    <div class="q-state q-rejected"><p class="q-result no"><Icon name="x" /> {d.maint.rejected}</p><button type="button" class="link-btn" data-q="undo">{d.maint.undo}</button></div>
+                    <p class="q-rule"><Icon name="shield" /> {d.maint.rule}</p>
+                    <p class="visually-hidden" role="status" aria-live="polite" data-q-live></p>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== DOCUMENTI ===== -->
+      <section class="dash-panel" id="panel-documents" data-panel="documents" aria-labelledby="h-docs">
+        <h2 class="panel-h" id="h-docs">{d.docs.title} <span class="dash-badge sm">{d.badge}</span></h2>
+        <div class="dcard">
+          <div class="doc-tools">
+            <div class="chips" role="group" aria-label={d.docs.title}>
+              {(['all', 'lease', 'insurance', 'invoice', 'statement'] as const).map((f) => (
+                <button type="button" class="chip" data-doc-filter={f} aria-pressed={f === 'all' ? 'true' : 'false'}>{d.docs.filters[f]}</button>
+              ))}
+            </div>
+            <label class="doc-search">
+              <span class="visually-hidden">{d.docs.search}</span>
+              <Icon name="search" />
+              <input type="search" class="input" placeholder={d.docs.search} data-doc-search />
+            </label>
+          </div>
+          <p class="muted small" data-doc-count aria-live="polite" data-tpl={d.docs.count}>{fill(d.docs.count, { n: documents.length })}</p>
+          <ul class="doc-list">
+            {documents.map((doc) => {
+              const name = fill(d.docs.names[doc.type], { n: doc.n, m: doc.type === 'statement' ? monthLong(`2026-${String(doc.n).padStart(2, '0')}`) : '' });
+              return (
+                <li data-doc-type={doc.type} data-doc-text={`${name} ${pname(doc.prop)}`.toLowerCase()}>
+                  <span class={`doc-ico doc-ico--${doc.type}`}><Icon name={doc.type === 'invoice' ? 'wallet' : doc.type === 'insurance' ? 'shield' : doc.type === 'statement' ? 'chart' : 'doc'} /></span>
+                  <span class="doc-name"><strong>{name}</strong><small>{pname(doc.prop)} · {date(doc.date)} · PDF {doc.kb} KB</small></span>
+                  <span class="pill pill--neutral">{d.docs.filters[doc.type]}</span>
+                  <button type="button" class="btn btn--secondary btn--sm" aria-disabled="true" data-demo-msg={d.statement.downloadNote}>{d.docs.open}</button>
+                </li>
+              );
+            })}
+          </ul>
+          <p class="muted" data-doc-empty hidden>{d.docs.empty}</p>
+        </div>
+      </section>
+
+      <!-- ===== INQUILINI E CONTRATTI ===== -->
+      <section class="dash-panel" id="panel-leases" data-panel="leases" aria-labelledby="h-leases">
+        <h2 class="panel-h" id="h-leases">{d.leases.title} <span class="dash-badge sm">{d.badge}</span></h2>
+        <div class="lease-grid">
+          {properties.map((p) => p.leaseEnd && p.leaseStart ? (
+            <article class="dcard lease">
+              <div class="dcard-head"><span><strong>{tenantOf(p.id)}</strong><small>{pname(p.id)}</small></span><span class={`pill pill--${p.status}`}>{d.status[p.status]}</span></div>
+              <div class="countdown" data-lease-end={p.leaseEnd} data-warn={daysTo(p.leaseEnd) < 90 ? '1' : undefined}>
+                <small>{d.leases.renewal}</small>
+                <strong><span data-days>{daysTo(p.leaseEnd)}</span> {d.leases.days}</strong>
+              </div>
+              <div class="meter" aria-hidden="true"><span style={`inline-size:${pct(p.leaseStart, p.leaseEnd)}%`}></span></div>
+              <dl class="kv">
+                <div><dt>{d.leases.start}</dt><dd>{date(p.leaseStart)}</dd></div>
+                <div><dt>{d.leases.end}</dt><dd>{date(p.leaseEnd)}</dd></div>
+                <div><dt>{d.leases.deposit}</dt><dd><span class="money" data-ils={p.deposit ?? 0}>{money(p.deposit ?? 0)}</span></dd></div>
+              </dl>
+              <button type="button" class="btn btn--secondary btn--sm" data-toggle-text={d.leases.reminded}><Icon name="clock" /> <span>{d.leases.remind}</span></button>
+            </article>
+          ) : (
+            <article class="dcard lease lease--vacant">
+              <div class="dcard-head"><span><strong>{pname(p.id)}</strong><small>{d.leases.vacant}</small></span><span class={`pill pill--${p.status}`}>{d.status[p.status]}</span></div>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <!-- ===== PAGAMENTI ===== -->
+      <section class="dash-panel" id="panel-payments" data-panel="payments" aria-labelledby="h-pay">
+        <h2 class="panel-h" id="h-pay">{d.payments.title} <span class="dash-badge sm">{d.badge}</span></h2>
+        <div class="table-wrap dtable dcard flush">
+          <table>
+            <thead><tr><th scope="col">{d.payments.date}</th><th scope="col">{d.payments.property}</th><th scope="col">{d.payments.tenant}</th><th scope="col">{d.payments.method}</th><th scope="col">{d.payments.status}</th><th scope="col" class="num">{d.payments.amount}</th></tr></thead>
+            <tbody>
+              {payments.map((p) => (
+                <tr>
+                  <td class="nowrap">{date(p.date)}</td>
+                  <th scope="row">{pname(p.prop)}</th>
+                  <td>{tenantOf(p.prop)}</td>
+                  <td>{d.payments.methods[p.method]}</td>
+                  <td><span class={`pill pill--pay-${p.status}`}>{d.payments.statuses[p.status]}</span></td>
+                  <td class="num"><span class="money" data-ils={p.amount}>{money(p.amount)}</span></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ===== MESSAGGI ===== -->
+      <section class="dash-panel" id="panel-messages" data-panel="messages" aria-labelledby="h-msg">
+        <h2 class="panel-h" id="h-msg">{d.messages.title} <span class="dash-badge sm">{d.badge}</span></h2>
+        <div class="dcard chat">
+          <div class="chat-head">
+            <span class="dash-avatar mgr" aria-hidden="true"><Icon name="user" /></span>
+            <span><strong>{d.manager}</strong><small>{d.messages.with} · <T text={d.messages.reply} /></small></span>
+            <span class="chat-lock"><Icon name="lock" /></span>
+          </div>
+          <ol class="chat-log" data-chat-log aria-live="polite">
+            {d.messages.thread.map((m) => (
+              <li class={`msg msg--${m.from}`}><p>{m.text}</p><small>{m.from === 'o' ? d.messages.you : d.manager} · {m.time}</small></li>
+            ))}
+          </ol>
+          <!-- Hook demo: nessun invio reale. In futuro: canale cifrato del portale [DA CONFERMARE]. -->
+          <form class="chat-form" data-chat-form data-you={d.messages.you}>
+            <label class="visually-hidden" for="chat-input">{d.messages.placeholder}</label>
+            <input id="chat-input" class="input" type="text" placeholder={d.messages.placeholder} autocomplete="off" maxlength="500" />
+            <button class="btn btn--primary btn--sm" type="submit">{d.messages.send} <Icon name="arrow" /></button>
+          </form>
+          <p class="muted small">{d.messages.note}</p>
+        </div>
+      </section>
+
+      <!-- ===== NOTIFICHE ===== -->
+      <section class="dash-panel" id="panel-notifications" data-panel="notifications" aria-labelledby="h-notif">
+        <div class="panel-bar">
+          <h2 class="panel-h" id="h-notif">{d.notifications.title} <span class="dash-badge sm">{d.badge}</span></h2>
+          <button type="button" class="btn btn--secondary btn--sm" data-mark-all>{d.notifications.markAll}</button>
+        </div>
+        <ul class="dcard notif-list flush" data-notif-list>
+          {d.notifications.items.map((n) => (
+            <li class:list={['notif', { unread: n.unread }]}>
+              <span class="notif-ico"><Icon name={n.icon} /></span>
+              <span class="notif-text">{n.text}</span>
+              <small>{n.time}</small>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      <!-- ===== SICUREZZA ===== -->
+      <section class="dash-panel" id="panel-security" data-panel="security" aria-labelledby="h-sec">
+        <h2 class="panel-h" id="h-sec">{d.security.title} <span class="dash-badge sm">{d.badge}</span></h2>
+        <div class="sec-grid">
+          <div class="dcard">
+            <div class="dcard-head">
+              <span><strong>{d.security.twofa}</strong><small>{d.security.twofaText}</small></span>
+              <button type="button" class="switch" role="switch" aria-checked="true" data-switch data-on={d.security.on} data-off={d.security.off} aria-label={d.security.twofa}>
+                <span class="switch-knob"></span><span class="switch-text">{d.security.on}</span>
+              </button>
+            </div>
+          </div>
+          <div class="dcard">
+            <div class="dcard-head"><strong>{d.security.sessions}</strong></div>
+            <ul class="sessions">
+              {d.security.sessionList.map((s) => (
+                <li>
+                  <Icon name="device" />
+                  <span><strong>{s.device}</strong><small>{s.where} · {s.when}</small></span>
+                  {s.current ? <span class="pill pill--occupied">{d.security.current}</span>
+                    : <button type="button" class="btn btn--secondary btn--sm" data-toggle-text={d.security.signedOut} data-disable-after="1"><span>{d.security.signOut}</span></button>}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+        <div class="table-wrap dtable dcard flush">
+          <table>
+            <caption>{d.security.log}</caption>
+            <thead><tr><th scope="col">{d.security.event}</th><th scope="col">{d.security.device}</th><th scope="col">{d.security.when}</th></tr></thead>
+            <tbody>{d.security.logList.map((l) => <tr><th scope="row">{l.event}</th><td>{l.device}</td><td class="nowrap">{l.when}</td></tr>)}</tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<script>
+  /*
+   * Logica della dashboard DEMO. Tutto avviene nel browser, nessuna chiamata di rete.
+   * In produzione questi dati arriveranno dalle API del portale [DA CONFERMARE].
+   */
+  const root = document.getElementById('dash') as HTMLElement | null;
+  if (root) {
+    root.classList.add('js');
+    const intl = root.dataset.intl || 'en-US';
+    const rates = JSON.parse(root.dataset.rates || '{"ILS":1}') as Record<string, number>;
+    const $ = <T extends Element = HTMLElement>(s: string, el: ParentNode = root) => el.querySelector<T>(s);
+    const $$ = <T extends Element = HTMLElement>(s: string, el: ParentNode = root) => Array.from(el.querySelectorAll<T>(s));
+
+    // ---------- Pannelli (navigazione laterale con hash) ----------
+    // Gli id dei pannelli hanno il prefisso "panel-" così l'hash (#overview) non fa scorrere la pagina
+    const panels = $$('[data-panel]');
+    const title = $('[data-panel-title]');
+    const show = (id: string, focus = false) => {
+      if (!panels.some((p) => p.dataset.panel === id)) id = 'overview';
+      panels.forEach((p) => p.classList.toggle('active', p.dataset.panel === id));
+      $$('.dash-nav a').forEach((a) => a.toggleAttribute('aria-current', a.getAttribute('data-nav') === id));
+      const link = $(`.dash-nav a[data-nav="${id}"] span`);
+      if (title && link) title.textContent = link.textContent;
+      if (focus) $(`#panel-${id}`)?.querySelector<HTMLElement>('h2')?.setAttribute('tabindex', '-1');
+      if (focus) $(`#panel-${id} h2`)?.focus({ preventScroll: true });
+    };
+    $$('a[data-nav]').forEach((a) => a.addEventListener('click', (e) => {
+      e.preventDefault();
+      const id = a.getAttribute('data-nav')!;
+      history.replaceState(null, '', `#${id}`);
+      show(id, true);
+      root.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    }));
+    show(location.hash.slice(1));
+    window.addEventListener('hashchange', () => show(location.hash.slice(1)));
+
+    // ---------- Valuta (ILS/USD/EUR) con tassi fissi illustrativi ----------
+    const fmt = (ils: number, cur: string, opts: { compact?: boolean; signed?: boolean } = {}) => {
+      const v = ils * (rates[cur] ?? 1);
+      const s = new Intl.NumberFormat(intl, {
+        style: 'currency', currency: cur, currencyDisplay: 'narrowSymbol', maximumFractionDigits: 0, ...(opts.compact ? { notation: 'compact' } : {}),
+      }).format(Math.abs(v));
+      if (opts.signed) return (v < 0 ? '−' : '+') + '\u2009' + s;
+      return (v < 0 ? '−' : '') + s;
+    };
+    let currency = localStorage.getItem('ebDemoCurrency') || 'ILS';
+    const applyCurrency = (cur: string) => {
+      currency = cur in rates ? cur : 'ILS';
+      $$('.money').forEach((el) => {
+        el.textContent = fmt(Number(el.dataset.ils), currency, { compact: el.dataset.compact === '1', signed: el.dataset.signed === '1' });
+      });
+      $$('[data-currency]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.currency === currency)));
+      localStorage.setItem('ebDemoCurrency', currency);
+    };
+    $$('[data-currency]').forEach((b) => b.addEventListener('click', () => applyCurrency(b.dataset.currency!)));
+    applyCurrency(currency);
+
+    // ---------- Tema chiaro/scuro ----------
+    const themeBtn = $('[data-theme-toggle]');
+    const applyTheme = (th: string) => {
+      root.dataset.theme = th;
+      themeBtn?.setAttribute('aria-pressed', String(th === 'dark'));
+      themeBtn?.setAttribute('aria-label', (th === 'dark' ? themeBtn.dataset.labelLight : themeBtn.dataset.labelDark) || '');
+      localStorage.setItem('ebDemoTheme', th);
+    };
+    applyTheme(new URLSearchParams(location.search).get('theme') || localStorage.getItem('ebDemoTheme') || 'light');
+    themeBtn?.addEventListener('click', () => applyTheme(root.dataset.theme === 'dark' ? 'light' : 'dark'));
+
+    // ---------- Tooltip del grafico entrate/uscite ----------
+    const tip = $('[data-chart="ie"] .tip');
+    const wrap = $('[data-chart="ie"] .chart-wrap');
+    $$('[data-chart="ie"] .bar-group').forEach((gEl) => {
+      const on = () => {
+        if (!tip || !wrap) return;
+        const g = gEl as unknown as SVGGElement;
+        const inc = Number(g.dataset.inc), exp = Number(g.dataset.exp);
+        tip.innerHTML = `<strong>${g.dataset.month}</strong><span><i class="lg-inc"></i>${fmt(inc, currency)}</span><span><i class="lg-exp"></i>${fmt(exp, currency)}</span><span>= ${fmt(inc - exp, currency)}</span>`;
+        tip.hidden = false;
+        const r = g.getBoundingClientRect(), w = wrap.getBoundingClientRect();
+        const x = Math.min(Math.max(r.left - w.left + r.width / 2, 70), w.width - 70);
+        tip.style.left = `${x}px`;
+        g.classList.add('hover');
+      };
+      const off = () => { if (tip) tip.hidden = true; gEl.classList.remove('hover'); };
+      gEl.addEventListener('mouseenter', on);
+      gEl.addEventListener('mouseleave', off);
+    });
+
+    // ---------- Rendiconto: selezione mese ----------
+    $('[data-st-select]')?.addEventListener('change', (e) => {
+      const m = (e.target as HTMLSelectElement).value;
+      $$('[data-st]').forEach((s) => (s.hidden = s.dataset.st !== m));
+    });
+
+    // Pulsanti demo non funzionanti (PDF, apri documento): mostrano un avviso.
+    $$('[data-demo-msg]').forEach((b) => b.addEventListener('click', () => {
+      const out = b.closest('[data-panel]')?.querySelector('[data-demo-out]') || $('[data-demo-out]');
+      if (out) { out.textContent = b.dataset.demoMsg || ''; setTimeout(() => (out.textContent = ''), 3500); }
+    }));
+
+    // ---------- Manutenzione: selezione richiesta ----------
+    $$('[data-req]').forEach((b) => b.addEventListener('click', () => {
+      $$('[data-req]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+      $$('[data-req-panel]').forEach((p) => (p.hidden = p.dataset.reqPanel !== b.dataset.req));
+    }));
+
+    // ---------- Flusso di approvazione del preventivo ----------
+    const q = $('[data-quote]');
+    if (q) {
+      const reqId = q.closest('[data-req-panel]')?.getAttribute('data-req-panel') || '';
+      const tl = $(`[data-timeline="${reqId}"]`);
+      const status = $(`[data-req-status="${reqId}"]`);
+      const live = $('[data-q-live]', q);
+      const setStep = (step: number) => {
+        $$('li', tl!).forEach((li, k) => {
+          li.className = k < step - 1 ? 'done' : k === step - 1 ? 'now' : 'todo';
+          const dot = li.querySelector('.dtl-dot');
+          if (dot) dot.innerHTML = k < step - 1 ? '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m5 12 5 5L20 7"/></svg>' : String(k + 1);
+        });
+      };
+      const set = (state: string) => {
+        q.dataset.state = state;
+        if (state === 'approved') { setStep(4); if (status) status.textContent = q.dataset.labelScheduled || ''; }
+        else if (state === 'rejected') { setStep(2); if (status) status.textContent = q.dataset.labelReview || ''; }
+        else if (state === 'idle') { setStep(3); if (status) status.textContent = q.dataset.labelQuote || ''; }
+        const visible = q.querySelector<HTMLElement>(`.q-${state === 'idle' ? 'idle' : state}`);
+        if (live && visible) live.textContent = visible.textContent?.trim() || '';
+        visible?.querySelector<HTMLElement>('button')?.focus();
+      };
+      q.addEventListener('click', (e) => {
+        const a = (e.target as HTMLElement).closest<HTMLElement>('[data-q]')?.dataset.q;
+        if (!a) return;
+        const map: Record<string, string> = { 'ask-approve': 'confirm-approve', 'ask-reject': 'confirm-reject', approve: 'approved', reject: 'rejected', cancel: 'idle', undo: 'idle' };
+        set(map[a]);
+      });
+    }
+
+    // ---------- Archivio documenti: filtri + ricerca ----------
+    let docFilter = 'all';
+    const docSearch = $<HTMLInputElement>('[data-doc-search]');
+    const docCount = $('[data-doc-count]');
+    const filterDocs = () => {
+      const qtxt = (docSearch?.value || '').trim().toLowerCase();
+      let n = 0;
+      $$('[data-doc-type]').forEach((li) => {
+        const ok = (docFilter === 'all' || li.dataset.docType === docFilter) && (!qtxt || (li.dataset.docText || '').includes(qtxt));
+        li.hidden = !ok; if (ok) n++;
+      });
+      if (docCount) docCount.textContent = (docCount.dataset.tpl || '{n}').replace('{n}', String(n));
+      const empty = $('[data-doc-empty]'); if (empty) empty.hidden = n > 0;
+    };
+    $$('[data-doc-filter]').forEach((b) => b.addEventListener('click', () => {
+      docFilter = b.dataset.docFilter || 'all';
+      $$('[data-doc-filter]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+      filterDocs();
+    }));
+    docSearch?.addEventListener('input', filterDocs);
+
+    // ---------- Contratti: countdown calcolato con la data di oggi ----------
+    $$('[data-lease-end]').forEach((el) => {
+      const days = Math.max(0, Math.ceil((new Date(el.dataset.leaseEnd + 'T00:00:00Z').getTime() - Date.now()) / 86400000));
+      const out = $('[data-days]', el); if (out) out.textContent = String(days);
+      el.toggleAttribute('data-warn', days < 90);
+    });
+
+    // Pulsanti che cambiano testo (promemoria, disconnetti sessione) — solo UI.
+    $$('[data-toggle-text]').forEach((b) => b.addEventListener('click', () => {
+      const span = b.querySelector('span:last-child') || b;
+      span.textContent = b.dataset.toggleText || '';
+      if (b.dataset.disableAfter) b.setAttribute('aria-disabled', 'true');
+      b.classList.add('done');
+    }));
+
+    // ---------- Messaggi: aggiunge il messaggio solo localmente ----------
+    const chatForm = $<HTMLFormElement>('[data-chat-form]');
+    chatForm?.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const input = chatForm.querySelector('input')!;
+      const text = input.value.trim();
+      if (!text) return;
+      const li = document.createElement('li');
+      li.className = 'msg msg--o new';
+      const p = document.createElement('p'); p.textContent = text; // textContent: niente HTML iniettato
+      const small = document.createElement('small');
+      small.textContent = `${chatForm.dataset.you} · ${new Intl.DateTimeFormat(intl, { hour: '2-digit', minute: '2-digit' }).format(new Date())}`;
+      li.append(p, small);
+      $('[data-chat-log]')?.append(li);
+      input.value = '';
+      li.scrollIntoView({ block: 'nearest' });
+    });
+
+    // ---------- Notifiche: segna tutte come lette ----------
+    $('[data-mark-all]')?.addEventListener('click', () => {
+      $$('.notif.unread').forEach((n) => n.classList.remove('unread'));
+      $$('[data-unread-count]').forEach((c) => { c.textContent = '0'; c.hidden = true; });
+    });
+
+    // ---------- Interruttore 2FA (solo UI) ----------
+    $$('[data-switch]').forEach((s) => s.addEventListener('click', () => {
+      const on = s.getAttribute('aria-checked') !== 'true';
+      s.setAttribute('aria-checked', String(on));
+      const txt = s.querySelector('.switch-text'); if (txt) txt.textContent = (on ? s.dataset.on : s.dataset.off) || '';
+    }));
+  }
+</script>

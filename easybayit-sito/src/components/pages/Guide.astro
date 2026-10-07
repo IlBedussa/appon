@@ -1,0 +1,82 @@
+---
+// Guida "Possedere casa in Israele dall'estero": contenuti generali con fonti + raccolta email (stub, nessun invio).
+import Icon from '../Icon.astro';
+import T from '../T.astro';
+import PageHero from '../PageHero.astro';
+import CtaBand from '../CtaBand.astro';
+import Sources from '../Sources.astro';
+import { url, tx, type Locale } from '../../i18n/config';
+interface Props { lang: Locale }
+const { lang } = Astro.props;
+const x = tx(lang);
+const g = x.tools.guide;
+const e = x.common.emailCapture;
+---
+<PageHero eyebrow={g.eyebrow} title={g.h1} lead={g.lead}>
+  <div class="notice" slot="actions" role="note" style="margin-block-start: var(--sp-5); max-inline-size: 60ch">
+    <Icon name="info" /><p><T text={g.reviewNote} /> {x.common.notAdvice}</p>
+  </div>
+</PageHero>
+
+<section class="section">
+  <div class="container guide">
+    <aside class="guide__toc">
+      <nav aria-labelledby="toc-title" class="card card--flat">
+        <h2 id="toc-title">{g.tocTitle}</h2>
+        <ol>{g.sections.map((s) => <li><a href={`#${s.id}`}>{s.title}</a></li>)}</ol>
+      </nav>
+      <form class="card capture" novalidate data-capture>
+        <h2>{e.title}</h2>
+        <p><T text={e.text} /></p>
+        <label for="cap-email">{e.email}</label>
+        <input class="input" id="cap-email" type="email" name="email" autocomplete="email" required />
+        <label class="capture__consent"><input type="checkbox" name="consent" required /> <span>{x.common.lead.consentA}<a href={url(lang, 'privacy')}>{x.common.lead.consentLink}</a>.</span></label>
+        <button class="btn btn--primary" type="submit">{e.submit}</button>
+        <div class="hp" aria-hidden="true"><label for="cap-website">Website</label><input id="cap-website" name="website" type="text" tabindex="-1" autocomplete="off" /></div>
+        <p class="form-status" role="status" aria-live="polite" data-ok={e.success} data-err={e.invalid} data-fail={x.common.sendFail}></p>
+      </form>
+    </aside>
+    <div class="guide__body prose">
+      {g.sections.map((s) => (
+        <section id={s.id} class="guide__sec" data-reveal>
+          <h2>{s.title}</h2>
+          {s.body.map((p) => <p><T text={p} /></p>)}
+          {s.sources.length > 0 && <Sources lang={lang} ids={s.sources} compact />}
+        </section>
+      ))}
+    </div>
+  </div>
+</section>
+
+<CtaBand lang={lang} />
+<script>
+  // Raccolta email della guida → /api/lead/ (kind "capture"). [DA CONFERMARE: invio automatico del PDF / newsletter con doppio opt-in]
+  import { sendLead } from '../../lib/lead-client';
+  const avvio = Date.now();
+  document.querySelectorAll<HTMLFormElement>('form[data-capture]').forEach((f) => f.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const em = f.elements.namedItem('email') as HTMLInputElement;
+    const ok = em.validity.valid && em.value.includes('@') && (f.elements.namedItem('consent') as HTMLInputElement).checked;
+    const st = f.querySelector<HTMLElement>('.form-status')!;
+    if (!ok) { st.textContent = st.dataset.err ?? ''; st.dataset.type = 'error'; return; }
+    const r = await sendLead('capture', { email: em.value.trim(), consent: true, website: (f.elements.namedItem('website') as HTMLInputElement).value, context: 'guide' }, avvio);
+    st.textContent = (r.ok ? st.dataset.ok : st.dataset.fail) ?? '';
+    st.dataset.type = r.ok ? 'success' : 'error';
+    if (r.ok) f.reset();
+  }));
+</script>
+<style>
+  .guide { display: grid; gap: var(--sp-6); align-items: start; }
+  @media (min-width: 1024px) { .guide { grid-template-columns: 320px minmax(0, 1fr); } .guide__toc { position: sticky; inset-block-start: calc(var(--header-h) + var(--sp-4)); } }
+  .guide__toc { display: grid; gap: var(--sp-4); }
+  .guide__toc h2 { font-size: var(--fs-md); }
+  .guide__toc ol { margin: 0; padding-inline-start: 1.2em; display: grid; gap: 6px; font-size: var(--fs-sm); }
+  .capture { display: grid; gap: var(--sp-2); }
+  .capture p { margin: 0; font-size: var(--fs-sm); color: var(--c-ink-2); }
+  .capture label { font-weight: 600; font-size: var(--fs-sm); }
+  .capture__consent { display: flex; gap: 8px; font-weight: 400 !important; color: var(--c-ink-2); }
+  .capture__consent input { margin-block-start: .3em; flex: none; }
+  .guide__sec { padding-block-end: var(--sp-6); margin-block-end: var(--sp-6); border-block-end: 1px solid var(--c-line); scroll-margin-block-start: calc(var(--header-h) + 16px); }
+  .guide__sec:last-child { border: 0; }
+  .guide__body { max-inline-size: 72ch; }
+</style>

@@ -1,0 +1,17 @@
+node_modules/
+dist/
+.astro/
+.vercel/
+# Segreti: MAI committare
+.env
+.env.*
+!.env.example
+# Credenziali di test generate dal seed (solo locale)
+.local-credentials.json
+LOCAL-CREDENTIALS.md
+# Supabase CLI
+supabase/.branches
+supabase/.temp
+test-results/
+demo/raw/
+demo/raw-wa/

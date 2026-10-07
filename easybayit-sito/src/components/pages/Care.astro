@@ -1,0 +1,110 @@
+---
+// Pagina livello "Care": case vuote / per le vacanze. Prezzo di ESEMPIO + benchmark con fonti.
+import Icon from '../Icon.astro';
+import T from '../T.astro';
+import PageHero from '../PageHero.astro';
+import CtaBand from '../CtaBand.astro';
+import Sources from '../Sources.astro';
+import LeadForm from '../LeadForm.astro';
+import { tiers, monthlyFee } from '../../data/pricing';
+import { VAT } from '../../data/market';
+import { url, tx, langMeta, type Locale } from '../../i18n/config';
+interface Props { lang: Locale }
+const { lang } = Astro.props;
+const x = tx(lang);
+const c = x.offer.care;
+const tier = tiers.find((t) => t.id === 'care')!;
+const nf = new Intl.NumberFormat(langMeta[lang].intl, { maximumFractionDigits: 0 });
+const fee = monthlyFee(tier, 0, VAT);
+---
+<PageHero eyebrow={c.eyebrow} title={c.h1} lead={c.lead}>
+  <div class="btn-row" slot="actions">
+    <a class="btn btn--primary" href="#care-lead">{x.common.talk} <Icon name="arrow" /></a>
+    <a class="btn btn--secondary" href={url(lang, 'pricing')}>{x.common.seePricing}</a>
+  </div>
+  <div class="care-visual" slot="visual" aria-hidden="true">
+    <div class="care-card">
+      <p class="care-card__t"><Icon name="eye" /> {x.home.mock.inspection}</p>
+      <div class="care-card__photos">{[0, 1, 2, 3].map((i) => <span style={`--h:${180 + i * 25}`}></span>)}</div>
+      <ul>
+        <li><Icon name="check" /> {c.what[0].title}</li>
+        <li><Icon name="check" /> {c.what[2].title}</li>
+        <li><Icon name="check" /> {c.what[3].title}</li>
+      </ul>
+      <span class="example-badge">{x.common.demoData}</span>
+    </div>
+  </div>
+</PageHero>
+
+<section class="section">
+  <div class="container">
+    <div class="section-head" data-reveal><h2>{c.whatTitle}</h2></div>
+    <div class="grid grid--3">
+      {c.what.map((w, i) => (
+        <article class="card" data-reveal style={`transition-delay:${i * 60}ms`}>
+          <span class="icon-badge"><Icon name={w.icon} /></span>
+          <h3>{w.title}</h3>
+          <p><T text={w.text} /></p>
+        </article>
+      ))}
+    </div>
+  </div>
+</section>
+
+<section class="section section--surface">
+  <div class="container split">
+    <div data-reveal>
+      <h2>{c.holidayTitle}</h2>
+      <p>{c.holidayLead}</p>
+      <ol class="holidays">
+        {c.holidays.map((hd) => <li><h3>{hd.name}</h3><p><T text={hd.text} /></p></li>)}
+      </ol>
+    </div>
+    <div class="card emergency" data-reveal>
+      <h2><Icon name="shield" /> {c.emergencyTitle}</h2>
+      <ul class="checklist">{c.emergency.map((e) => <li><Icon name="check" /><span>{e}</span></li>)}</ul>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="container care-price">
+    <div class="card care-price__card" data-reveal>
+      <span class="example-badge"><Icon name="info" /> <T text={`${x.common.example} ${x.P}`} /></span>
+      <h2>{c.priceTitle}</h2>
+      <p class="care-price__v"><span class="tnum">₪{nf.format(tier.fixedIls!)}</span> <small>{x.common.plusVat} {x.common.perMonth}</small></p>
+      <p class="care-price__g">≈ ₪{nf.format(fee.gross)} {x.common.inclVat}</p>
+      <p class="help">{c.priceNote}</p>
+      <Sources lang={lang} ids={['feesAgencyTlv', 'feesKaufman']} compact />
+    </div>
+    <LeadForm lang={lang} id="care-lead" context="care" />
+  </div>
+</section>
+
+<CtaBand lang={lang} />
+<style>
+  .care-visual { display: grid; place-items: center; }
+  .care-card { inline-size: min(100%, 380px); background: #fff; border-radius: var(--r-xl); padding: var(--sp-5); box-shadow: var(--sh-lg); border: 1px solid var(--c-line); display: grid; gap: var(--sp-3); }
+  .care-card__t { margin: 0; font-weight: 700; display: flex; gap: 8px; align-items: center; }
+  .care-card__photos { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .care-card__photos span { aspect-ratio: 1; border-radius: 8px; background: linear-gradient(135deg, hsl(var(--h) 45% 70%), hsl(calc(var(--h) + 30) 45% 55%)); }
+  .care-card ul { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; font-size: var(--fs-sm); }
+  .care-card li { display: flex; gap: 8px; align-items: center; }
+  .care-card li :global(.icon) { color: var(--c-success); }
+  .care-card .example-badge { justify-self: start; }
+  .holidays { list-style: none; padding: 0; display: grid; gap: var(--sp-3); counter-reset: h; }
+  .holidays li { padding: var(--sp-4); border-inline-start: 3px solid var(--c-primary); background: #fff; border-radius: 0 var(--r-md) var(--r-md) 0; }
+  [dir='rtl'] .holidays li { border-radius: var(--r-md) 0 0 var(--r-md); }
+  .holidays h3 { font-size: var(--fs-md); margin: 0 0 4px; }
+  .holidays p { margin: 0; color: var(--c-ink-2); }
+  .emergency h2 { display: flex; gap: var(--sp-3); align-items: center; font-size: var(--fs-xl); }
+  .emergency h2 :global(.icon) { color: var(--c-primary); }
+  .care-price { display: grid; gap: var(--sp-6); align-items: start; }
+  @media (min-width: 1024px) { .care-price { grid-template-columns: 1fr 1.4fr; } }
+  .care-price__card { display: grid; gap: var(--sp-2); }
+  .care-price__card .example-badge { justify-self: start; }
+  .care-price__v { font-size: var(--fs-3xl); font-weight: 700; margin: 0; line-height: 1.1; color: var(--c-ink); }
+  .care-price__v small { font-size: var(--fs-sm); color: var(--c-muted); font-weight: 500; }
+  .care-price__g { margin: 0; color: var(--c-muted); }
+  .help { color: var(--c-muted); font-size: var(--fs-sm); margin: 0; }
+</style>

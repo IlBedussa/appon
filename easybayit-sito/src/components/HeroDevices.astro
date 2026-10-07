@@ -1,0 +1,182 @@
+---
+// Mockup 3D in puro CSS/SVG (laptop + telefono) con mini-dashboard. DATI DI DEMO, etichettati come tali.
+// Nessuna animazione d'ingresso: il mockup è completo già al primo paint (niente contenuto "in arrivo" sopra la piega).
+// Solo un leggerissimo galleggiamento, e solo se l'utente non ha chiesto "riduci movimento".
+// Tutte le misure interne sono in unità del contenitore (cqi): il mockup scala in modo identico da 320 a 1440 px.
+// Decorativo per lo screen reader tranne l'etichetta "Dati demo" e il link alla demo interattiva.
+import Icon from './Icon.astro';
+import { tx, url, langMeta, type Locale } from '../i18n/config';
+import { FALLBACK_RATES } from '../data/rates';
+interface Props { lang: Locale }
+const { lang } = Astro.props;
+const x = tx(lang);
+const m = x.home.mock;
+// Importo FITTIZIO di demo (solo illustrativo, etichettato "Dati demo").
+const netIls = 12450;
+const cur = lang === 'en' || lang === 'he' ? 'USD' : 'EUR';
+const conv = netIls / FALLBACK_RATES.ilsPer[cur];
+const fmtCur = new Intl.NumberFormat(langMeta[lang].intl, { style: 'currency', currency: cur, currencyDisplay: 'narrowSymbol', maximumFractionDigits: 0 }).format(conv);
+const ils = new Intl.NumberFormat(langMeta[lang].intl, { style: 'currency', currency: 'ILS', currencyDisplay: 'narrowSymbol', maximumFractionDigits: 0 });
+const bars = [42, 55, 48, 62, 58, 70, 66, 74, 69, 80, 77, 86];
+const navIcons = ['home', 'doc', 'tool', 'folder', 'chat'];
+---
+<div class="devices">
+  <a class="devices__badge" href={url(lang, 'demo')}><Icon name="eye" /> {x.common.demoData} · {x.common.openDemo}</a>
+  <div class="devices__stage" aria-hidden="true">
+    <div class="laptop">
+      <div class="laptop__screen">
+        <div class="ui">
+          <div class="ui__side">
+            <span class="ui__brand"><i></i><b></b></span>
+            <ul class="ui__nav">
+              {m.nav.map((label, i) => (
+                <li class={i === 0 ? 'is-active' : undefined}><Icon name={navIcons[i] ?? 'doc'} /><span>{label}</span></li>
+              ))}
+            </ul>
+            <span class="ui__me"><i></i><b></b></span>
+          </div>
+          <div class="ui__main">
+            <div class="ui__top">
+              <span class="ui__title">{m.nav[0]}</span>
+              <span class="ui__pill">{m.currencyLabel} {cur}</span>
+            </div>
+            <div class="ui__kpis">
+              <div class="ui__kpi ui__kpi--hl"><small>{m.netLabel}</small><b dir="ltr">{ils.format(netIls)}</b><em dir="ltr">≈ {fmtCur}</em></div>
+              <div class="ui__kpi"><small>{m.inspection}</small><b><Icon name="check" /></b><em>{m.inspectionMeta}</em></div>
+            </div>
+            <div class="ui__chart">
+              <small>{m.chartLabel}</small>
+              <div class="ui__bars">{bars.map((h) => <span style={`block-size:${h}%`}></span>)}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="laptop__base"></div>
+    </div>
+    <div class="phone">
+      <div class="phone__notch"></div>
+      <div class="phone__screen">
+        <p class="phone__title"><Icon name="tool" /> {m.approve.split('·')[0]}</p>
+        <div class="phone__photo">
+          {/* Illustrazione (non una foto reale): scaldabagno a parete con piccola perdita al raccordo, chiave inglese. */}
+          <svg viewBox="0 0 120 90" preserveAspectRatio="xMidYMid slice" focusable="false">
+            <symbol id="hdw-photo" viewBox="0 0 120 90">
+            <defs>
+              <linearGradient id="hdw-wall" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f3f6fb"/><stop offset="1" stop-color="#dfe6f1"/></linearGradient>
+              <linearGradient id="hdw-tank" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#b9c3d2"/><stop offset=".3" stop-color="#ffffff"/><stop offset=".72" stop-color="#e8ecf2"/><stop offset="1" stop-color="#a9b4c5"/></linearGradient>
+              <linearGradient id="hdw-cu" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#b8692f"/><stop offset=".45" stop-color="#f2b27a"/><stop offset="1" stop-color="#a65a24"/></linearGradient>
+              <linearGradient id="hdw-steel" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9aa6b8"/><stop offset=".5" stop-color="#e2e8f0"/><stop offset="1" stop-color="#7d8aa0"/></linearGradient>
+              <pattern id="hdw-tiles" width="15" height="15" patternUnits="userSpaceOnUse"><path d="M15 0H0V15" fill="none" stroke="#fff" stroke-width="1"/></pattern>
+            </defs>
+            <rect width="120" height="90" fill="url(#hdw-wall)"/>
+            <rect width="120" height="90" fill="url(#hdw-tiles)" opacity=".85"/>
+            <rect x="0" y="80" width="120" height="10" fill="#cfd8e5"/>
+            <ellipse cx="63" cy="40" rx="25" ry="33" fill="#0b1324" opacity=".08"/>
+            <rect x="48" y="4" width="4" height="6" rx="1" fill="#8592a7"/><rect x="68" y="4" width="4" height="6" rx="1" fill="#8592a7"/>
+            <rect x="40" y="8" width="40" height="58" rx="13" fill="url(#hdw-tank)" stroke="#a3aec0" stroke-width=".6"/>
+            <rect x="40.5" y="18" width="39" height="1.4" fill="#b6c0cf" opacity=".7"/>
+            <rect x="40.5" y="55" width="39" height="1.4" fill="#b6c0cf" opacity=".7"/>
+            <rect x="51" y="28" width="18" height="13" rx="2.5" fill="#13265c"/>
+            <circle cx="56" cy="34.5" r="2.6" fill="none" stroke="#5eead4" stroke-width="1.2"/>
+            <rect x="61" y="32.4" width="5.5" height="1.6" rx=".8" fill="#5b8cff"/><rect x="61" y="35.4" width="3.8" height="1.6" rx=".8" fill="#5b8cff" opacity=".6"/>
+            <rect x="48" y="65" width="4.5" height="17" fill="url(#hdw-cu)"/><rect x="67.5" y="65" width="4.5" height="17" fill="url(#hdw-cu)"/>
+            <rect x="46.8" y="71" width="7" height="4" rx="1" fill="#c47a3f"/><rect x="66.3" y="71" width="7" height="4" rx="1" fill="#c47a3f"/>
+            <rect x="40" y="71.6" width="8" height="2.8" rx="1.4" fill="#1a4fd6"/><rect x="72" y="71.6" width="8" height="2.8" rx="1.4" fill="#dc2626"/>
+            <path d="M51 77.5c0 0-2.2 2.7-2.2 4a2.2 2.2 0 0 0 4.4 0c0-1.3-2.2-4-2.2-4z" fill="#5b8cff"/>
+            <ellipse cx="51" cy="86" rx="5" ry="1.4" fill="#5b8cff" opacity=".35"/>
+            <g transform="rotate(-38 96 66)">
+              <rect x="80" y="63.5" width="26" height="5" rx="2.5" fill="url(#hdw-steel)" stroke="#6b778b" stroke-width=".5"/>
+              <path d="M104 60.5a6.5 6.5 0 1 1 0 11l2-3.2h3.5v-4.6H106z" fill="url(#hdw-steel)" stroke="#6b778b" stroke-width=".5"/>
+            </g>
+          </symbol>
+            <use href="#hdw-photo" width="120" height="90"/>
+          </svg>
+          <span class="phone__tag">{m.photoTag}</span>
+        </div>
+        {/* Altre due "foto" dello stesso intervento = ritagli della stessa illustrazione (nessun peso aggiunto). */}
+        <div class="phone__thumbs">
+          <svg viewBox="0 0 120 90" preserveAspectRatio="xMidYMid slice" focusable="false" class="is-sel"><use href="#hdw-photo" width="120" height="90"/></svg>
+          <svg viewBox="36 58 40 30" preserveAspectRatio="xMidYMid slice" focusable="false"><use href="#hdw-photo" width="120" height="90"/></svg>
+          <svg viewBox="46 24 28 21" preserveAspectRatio="xMidYMid slice" focusable="false"><use href="#hdw-photo" width="120" height="90"/></svg>
+        </div>
+        <p class="phone__job">{m.repair}</p>
+        <p class="phone__amt" dir="ltr">{ils.format(1263)}</p>
+        <span class="phone__btn">{m.approve}</span>
+        <span class="phone__ok"><Icon name="check" /> {m.approved}</span>
+      </div>
+    </div>
+  </div>
+</div>
+<style>
+  .devices { position: relative; display: grid; gap: var(--sp-3); justify-items: center; }
+  .devices__badge { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-xs); font-weight: 700; color: var(--c-warning); background: var(--c-warning-50); border: 1px solid #fcd9a8; border-radius: 999px; padding: 4px 12px; text-decoration: none; z-index: 2; }
+  .devices__badge:hover { text-decoration: underline; }
+  .devices__stage { position: relative; inline-size: 100%; max-inline-size: 560px; aspect-ratio: 16 / 11; perspective: 1600px; container-type: inline-size; }
+  .devices__stage :global(.icon) { inline-size: 1.15em; block-size: 1.15em; flex: none; }
+
+  /* Laptop: 80% della scena; il telefono copre solo il bordo finale (mai l'etichetta della valuta). */
+  .laptop { position: absolute; inset-inline-start: 0; inset-block-start: 3%; inline-size: 80%; transform: rotateY(-12deg) rotateX(5deg); transform-style: preserve-3d; }
+  :global([dir='rtl']) .laptop { transform: rotateY(12deg) rotateX(5deg); }
+  .laptop__screen { aspect-ratio: 16 / 10; border-radius: 2.4cqi 2.4cqi .8cqi .8cqi; background: #0b1324; padding: 1.8cqi; box-shadow: 0 40px 80px -20px rgb(11 19 36 / .45), inset 0 0 0 1px rgb(255 255 255 / .08); }
+  .laptop__base { block-size: 2.4cqi; margin-inline: -5%; border-radius: 0 0 2.8cqi 2.8cqi; background: linear-gradient(#e2e6ee, #aeb6c6); box-shadow: 0 18px 30px -12px rgb(11 19 36 / .4); }
+  .ui { display: flex; block-size: 100%; border-radius: 1.2cqi; overflow: hidden; background: #f6f8fc; font-size: 1.55cqi; line-height: 1.25; color: var(--c-ink); }
+
+  /* Barra laterale: marchio, 5 voci con icona + etichetta (prima attiva), utente in fondo. */
+  .ui__side { inline-size: 26%; flex: none; background: linear-gradient(180deg, #102257, #1a4fd6 140%); color: #c9d6f5; display: flex; flex-direction: column; gap: 2.2cqi; padding: 2.2cqi 1.4cqi; }
+  .ui__brand { display: flex; align-items: center; gap: .9cqi; padding-inline: .6cqi; }
+  .ui__brand i { inline-size: 2.6cqi; block-size: 2.6cqi; border-radius: .7cqi; background: linear-gradient(135deg, var(--c-accent), #5b8cff); }
+  .ui__brand b { inline-size: 8cqi; block-size: 1.1cqi; border-radius: 1cqi; background: rgb(255 255 255 / .55); }
+  .ui__nav { list-style: none; margin: 0; padding: 0; display: grid; gap: .5cqi; }
+  .ui__nav li { display: flex; align-items: center; gap: .9cqi; padding: .9cqi .8cqi; border-radius: .9cqi; white-space: nowrap; overflow: hidden; }
+  .ui__nav li span { overflow: hidden; text-overflow: ellipsis; }
+  .ui__nav li :global(.icon) { color: #8fa8e6; stroke-width: 2.2; }
+  .ui__nav li.is-active { background: rgb(255 255 255 / .14); color: #fff; font-weight: 700; box-shadow: inset 2px 0 0 var(--c-accent); }
+  :global([dir='rtl']) .ui__nav li.is-active { box-shadow: inset -2px 0 0 var(--c-accent); }
+  .ui__nav li.is-active :global(.icon) { color: var(--c-accent); }
+  .ui__me { margin-block-start: auto; display: flex; align-items: center; gap: .9cqi; padding-inline: .6cqi; }
+  .ui__me i { inline-size: 2.6cqi; block-size: 2.6cqi; border-radius: 50%; background: linear-gradient(135deg, #dbe6ff, #8fa8e6); }
+  .ui__me b { inline-size: 7cqi; block-size: .9cqi; border-radius: 1cqi; background: rgb(255 255 255 / .3); }
+
+  .ui__main { flex: 1; padding: 2.2cqi; display: grid; grid-template-rows: auto auto 1fr; gap: 1.8cqi; min-inline-size: 0; }
+  /* Titolo + valuta all'inizio della riga: il telefono (lato finale) non li copre mai. */
+  .ui__top { display: flex; align-items: center; gap: 1.4cqi; }
+  .ui__title { font-size: 2.3cqi; font-weight: 800; letter-spacing: -0.01em; }
+  .ui__pill { font-size: 1.45cqi; font-weight: 700; color: var(--c-primary); background: var(--c-primary-50); border: 1px solid var(--c-primary-100); border-radius: 999px; padding: .3cqi 1.1cqi; white-space: nowrap; }
+  .ui__kpis { display: grid; grid-template-columns: 1.15fr 1fr; gap: 1.4cqi; }
+  .ui__kpi { background: #fff; border: 1px solid var(--c-line); border-radius: 1.2cqi; padding: 1.4cqi 1.6cqi; display: grid; gap: .3cqi; min-inline-size: 0; box-shadow: 0 1px 2px rgb(11 19 36 / .04); }
+  .ui__kpi small { font-size: 1.4cqi; color: var(--c-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ui__kpi b { font-size: 3.4cqi; line-height: 1.1; font-weight: 800; }
+  .ui__kpi b :global(.icon) { color: var(--c-success); inline-size: 1em; block-size: 1em; stroke-width: 2.6; }
+  .ui__kpi em { font-style: normal; font-size: 1.4cqi; color: var(--c-secondary); font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ui__kpi--hl { background: linear-gradient(135deg, #eef3ff, #fff); }
+  .ui__chart { display: grid; grid-template-rows: auto 1fr; gap: 1cqi; background: #fff; border: 1px solid var(--c-line); border-radius: 1.2cqi; padding: 1.4cqi 1.6cqi; min-block-size: 0; box-shadow: 0 1px 2px rgb(11 19 36 / .04); }
+  .ui__chart small { font-size: 1.4cqi; font-weight: 700; color: var(--c-ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ui__bars { display: flex; align-items: flex-end; gap: 1cqi; min-block-size: 0; background: repeating-linear-gradient(to top, var(--c-line) 0 1px, transparent 1px 25%); }
+  .ui__bars span { flex: 1; border-radius: .6cqi .6cqi 0 0; background: linear-gradient(180deg, #5b8cff, #1a4fd6); }
+
+  /* Telefono: preventivo da approvare con foto (illustrazione) dell'intervento. */
+  .phone { position: absolute; inset-inline-end: 0; inset-block-end: 0; inline-size: 27%; aspect-ratio: 9 / 18.5; border-radius: 4.4cqi; background: #0b1324; padding: 1.1cqi; box-shadow: 0 30px 60px -18px rgb(11 19 36 / .55), inset 0 0 0 1px rgb(255 255 255 / .12); transform: rotateY(-8deg) rotateZ(2deg); }
+  :global([dir='rtl']) .phone { transform: rotateY(8deg) rotateZ(-2deg); }
+  .phone__notch { position: absolute; inset-block-start: 2.2cqi; left: 50%; translate: -50% 0; inline-size: 8cqi; block-size: 1.9cqi; border-radius: 99px; background: #000; z-index: 1; }
+  .phone__screen { block-size: 100%; border-radius: 3.4cqi; background: #fff; padding: 5.6cqi 2cqi 2cqi; display: flex; flex-direction: column; gap: 1.3cqi; overflow: hidden; font-size: 1.6cqi; line-height: 1.25; color: var(--c-ink); }
+  .phone__title { margin: 0; font-size: 1.95cqi; font-weight: 800; display: flex; gap: .7cqi; align-items: center; white-space: nowrap; }
+  .phone__title :global(.icon) { color: var(--c-primary); }
+  .phone__photo { position: relative; aspect-ratio: 4 / 3; border-radius: 1.6cqi; overflow: hidden; box-shadow: inset 0 0 0 1px rgb(11 19 36 / .08); flex: none; }
+  .phone__photo svg { display: block; inline-size: 100%; block-size: 100%; }
+  .phone__tag { position: absolute; inset-block-start: .9cqi; inset-inline-start: .9cqi; font-size: 1.25cqi; font-weight: 700; color: #fff; background: rgb(11 19 36 / .72); border-radius: 99px; padding: .2cqi .9cqi; white-space: nowrap; }
+  .phone__thumbs { display: grid; grid-template-columns: repeat(3, 1fr); gap: .8cqi; flex: none; }
+  .phone__thumbs svg { display: block; inline-size: 100%; aspect-ratio: 4 / 3; border-radius: .9cqi; box-shadow: inset 0 0 0 1px rgb(11 19 36 / .08); opacity: .8; }
+  .phone__thumbs svg.is-sel { opacity: 1; outline: 2px solid var(--c-primary); outline-offset: 1px; }
+  .phone__job { margin: 0; font-size: 1.6cqi; color: var(--c-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .phone__amt { margin: -0.6cqi 0 0; font-weight: 800; font-size: 3.5cqi; line-height: 1.1; }
+  .phone__btn { margin-block-start: auto; display: block; text-align: center; border-radius: 1.4cqi; background: var(--c-primary); color: #fff; font-size: 1.45cqi; font-weight: 700; padding: 1.2cqi .8cqi; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .phone__ok { display: flex; align-items: center; justify-content: center; gap: .6cqi; font-size: 1.5cqi; color: var(--c-success); font-weight: 700; }
+
+  /* Solo galleggiamento leggero (mai animazioni d'ingresso) e solo senza "riduci movimento". */
+  @media (prefers-reduced-motion: no-preference) {
+    .laptop { animation: float-a 7s ease-in-out infinite; }
+    .phone { animation: float-b 6s ease-in-out infinite; }
+  }
+  @keyframes float-a { 50% { translate: 0 -6px; } }
+  @keyframes float-b { 50% { translate: 0 5px; } }
+</style>

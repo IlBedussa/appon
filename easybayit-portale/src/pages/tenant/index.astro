@@ -1,0 +1,53 @@
+---
+// Area inquilino: contratto in corso, scadenza, richieste recenti.
+import AppLayout from '../../layouts/AppLayout.astro';
+import Money from '../../components/Money.astro';
+import Icon from '../../components/Icon.astro';
+import Pill from '../../components/Pill.astro';
+import { fill } from '../../i18n';
+import { date } from '../../lib/format';
+
+const { t, supabase, intl } = Astro.locals;
+const [{ data: leases }, { data: reqs }] = await Promise.all([
+  supabase.from('leases').select('id, start_date, end_date, monthly_rent_ils, deposit_ils, payment_day, status, property:properties(code, name, address, city)').in('status', ['active', 'upcoming']).order('start_date'),
+  supabase.from('maintenance_requests').select('id, ref, title, source, status, priority, created_at').order('created_at', { ascending: false }).limit(5),
+]);
+const days = (iso: string) => Math.max(0, Math.ceil((Date.parse(iso + 'T00:00:00Z') - Date.now()) / 86400000));
+const pct = (s: string, e: string) => Math.min(100, Math.max(0, Math.round(((Date.now() - Date.parse(s)) / (Date.parse(e) - Date.parse(s))) * 100)));
+---
+<AppLayout title={t.tenant.leaseTitle} active="overview">
+  {(leases ?? []).length === 0 ? <p class="notice"><Icon name="info" /> <span>{t.tenant.noLease}</span></p> : (
+    <div class="lease-grid">
+      {leases!.map((l) => (
+        <article class="dcard lease">
+          <div class="dcard-head"><span><strong>{(l.property as any).name}</strong><small>{(l.property as any).address}, {(l.property as any).city}</small></span>
+            <Pill tone="ok">{(t.leaseStatus as Record<string, string>)[l.status]}</Pill></div>
+          <div class="countdown" data-warn={days(l.end_date) < 90 ? '1' : undefined}><small>{t.pri.daysLeftLabel}</small><strong>{days(l.end_date)}</strong></div>
+          <svg class="meter-svg" viewBox="0 0 100 6" preserveAspectRatio="none" aria-hidden="true"><rect class="bg" width="100" height="6" rx="3" /><rect class="fg" width={pct(l.start_date, l.end_date)} height="6" rx="3" /></svg>
+          <p class="visually-hidden">{fill(t.tenant.daysLeft, { n: days(l.end_date) })}</p>
+          <dl class="kv">
+            <div><dt>{t.tenant.rent}</dt><dd><Money v={l.monthly_rent_ils} /></dd></div>
+            <div><dt>{t.tenant.deposit}</dt><dd><Money v={l.deposit_ils} /></dd></div>
+            <div><dt>{t.tenant.start}</dt><dd>{date(l.start_date, intl)}</dd></div>
+            <div><dt>{t.tenant.end}</dt><dd>{date(l.end_date, intl)}</dd></div>
+            <div><dt>{t.tenant.payDay}</dt><dd>{l.payment_day}</dd></div>
+          </dl>
+        </article>
+      ))}
+    </div>
+  )}
+  <div class="dcard">
+    <div class="dcard-head"><strong>{t.tenant.requestsTitle}</strong><a class="btn btn--primary btn--sm" href="/tenant/requests/new"><Icon name="plus" /> {t.tenant.newRequest}</a></div>
+    {(reqs ?? []).length === 0 ? <p class="empty">{t.maint.empty}</p> : (
+      <ul class="req-list">
+        {reqs!.map((r) => (
+          <li><a class="req" href={`/tenant/requests/${r.id}`}>
+            <span class="req-top"><strong>{r.title}</strong><Pill tone={r.priority === 'urgent' ? 'urgent' : 'neutral'}>{(t.priority as Record<string, string>)[r.priority]}</Pill></span>
+            <small>R-{r.ref} · {date(r.created_at, intl)}</small>
+            <span class="req-status">{(t.maintStatus as Record<string, string>)[r.status]}</span>
+          </a></li>
+        ))}
+      </ul>
+    )}
+  </div>
+</AppLayout>

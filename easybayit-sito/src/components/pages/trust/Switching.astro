@@ -1,0 +1,48 @@
+---
+// Cambiare gestore: calcolatore di confronto (valori inseriti dall'utente) + checklist di passaggio.
+import TIcon from '../../trust/TIcon.astro';
+import PageHero from '../../PageHero.astro';
+import SwitchCalc from '../../trust/SwitchCalc.astro';
+import SwitchChecklist from '../../trust/SwitchChecklist.astro';
+import TrustCta from '../../trust/TrustCta.astro';
+import T from '../../T.astro';
+import { url, tt, type Locale } from '../../../i18n/config';
+interface Props { lang: Locale }
+const { lang } = Astro.props;
+const x = tt(lang);
+const s = x.sw;
+---
+<PageHero eyebrow={s.eyebrow} title={s.h1} lead={s.lead}>
+  <div class="btn-row" slot="actions">
+    <a class="btn btn--primary" href="#calc"><TIcon name="calc" /> {s.calcTitle}</a>
+    <a class="btn btn--secondary" href="#checklist"><TIcon name="checkCircle" /> {s.checklistTitle}</a>
+  </div>
+</PageHero>
+<section class="section section--surface" id="calc">
+  <div class="container">
+    <div class="section-head" data-reveal>
+      <p class="eyebrow"><TIcon name="calc" /> {s.calcTitle}</p>
+      <h2>{s.calcTitle}</h2>
+    </div>
+    <SwitchCalc lang={lang} />
+  </div>
+</section>
+<section class="section" id="checklist">
+  <div class="container sw-narrow">
+    <div class="section-head" data-reveal>
+      <p class="eyebrow"><TIcon name="swap" /> {s.eyebrow}</p>
+      <h2>{s.checklistTitle}</h2>
+      <p><T text={s.checklistLead} /></p>
+    </div>
+    <SwitchChecklist lang={lang} />
+    <p class="sw-noclaims"><TIcon name="shield" /> {s.noClaims}</p>
+    <p class="sw-pledge"><a href={url(lang, 'pledge')}>{x.strip.pricingPledge} <TIcon name="arrow" /></a></p>
+  </div>
+</section>
+<TrustCta lang={lang} />
+<style>
+  .sw-narrow { max-inline-size: 900px; }
+  .sw-noclaims { display: flex; gap: 8px; align-items: flex-start; color: var(--c-muted); font-size: var(--fs-sm); margin-block-start: var(--sp-5); }
+  .sw-noclaims :global(.icon) { flex: none; margin-block-start: 2px; }
+  .sw-pledge a { display: inline-flex; gap: 6px; align-items: center; font-weight: 600; text-decoration: none; }
+</style>

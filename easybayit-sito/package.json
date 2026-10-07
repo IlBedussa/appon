@@ -1,0 +1,39 @@
+{
+  "name": "easybayit",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build && node scripts/vercel-headers.mjs && node scripts/vercel-geo.mjs",
+    "preview": "astro preview --port 4321 --host",
+    "check:meta": "node scripts/check-meta.mjs",
+    "screenshots": "node scripts/screenshots.mjs",
+    "check": "astro check",
+    "build:test": "SHOW_TEST_LOGOS=1 SHOW_DRAFTS=1 astro build",
+    "preview:test": "SHOW_TEST_LOGOS=1 SHOW_DRAFTS=1 astro build && astro preview --port 4321 --host",
+    "test:popup": "node scripts/test-popup.mjs",
+    "test:trust": "node --experimental-strip-types --test src/lib/trust/booking.test.ts",
+    "check:vercel": "DEPLOY_TARGET=vercel npm run build && node scripts/check-vercel-routes.mjs",
+    "screenshots:popup": "node scripts/screenshots-popup.mjs",
+    "preview:geo": "node scripts/preview-geo.mjs",
+    "test:geo": "node scripts/test-geo.mjs"
+  },
+  "dependencies": {
+    "@astrojs/markdown-remark": "^7.3.1",
+    "@astrojs/node": "11.1.6",
+    "@astrojs/vercel": "11.0.11",
+    "@fontsource/heebo": "5.3.0",
+    "astro": "7.3.5",
+    "simple-icons": "^16.33.0"
+  },
+  "devDependencies": {
+    "@astrojs/check": "0.9.10",
+    "@types/node": "22.20.5",
+    "playwright-core": "1.56.1",
+    "typescript": "5.9.3"
+  }
+}

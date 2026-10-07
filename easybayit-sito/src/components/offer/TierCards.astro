@@ -1,0 +1,57 @@
+---
+// Schede dei 3 livelli di ESEMPIO (Essential / Full / Care). Prezzi IVA esclusa + IVA inclusa.
+import Icon from '../Icon.astro';
+import T from '../T.astro';
+import { tiers, monthlyFee } from '../../data/pricing';
+import { VAT } from '../../data/market';
+import { tx, url, langMeta, type Locale } from '../../i18n/config';
+// level: livello del titolo dei piani (2 nella pagina Prezzi, dove non c'è un h2 prima delle schede).
+interface Props { lang: Locale; compact?: boolean; level?: 2 | 3 }
+const { lang, compact = false, level = 3 } = Astro.props;
+const H = level === 2 ? 'h2' : 'h3';
+const x = tx(lang);
+const o = x.offer.tiers;
+const nf = new Intl.NumberFormat(langMeta[lang].intl, { maximumFractionDigits: 0 });
+const fill = (s: string, v: Record<string, string | number>) => s.replace(/\{(\w+)\}/g, (_, k) => String(v[k]));
+---
+<div class="tiers">
+  {tiers.map((t) => {
+    const info = o[t.id];
+    const price = t.model === 'fixed' ? fill(o.fixed, { fixed: nf.format(t.fixedIls!) }) : fill(o.pctOf, { pct: t.pct! });
+    const sub = t.model === 'fixed' ? `≈ ₪${nf.format(monthlyFee(t, 0, VAT).gross)} ${x.common.inclVat}` : fill(o.min, { min: nf.format(t.minIls!) });
+    return (
+      <article class:list={['card', 'tier', { 'tier--featured': t.featured }]} data-reveal>
+        {t.featured && <p class="tier__pop">{o.popular}</p>}
+        <span class="example-badge"><Icon name="info" /> <T text={`${x.common.example} ${x.P}`} /></span>
+        <H class="tier__name">{info.name}</H>
+        <p class="tier__for">{info.for}</p>
+        <p class="tier__price"><span class="tnum">{price}</span> <small>{x.common.plusVat}</small></p>
+        <p class="tier__sub">{sub}</p>
+        {!compact && <ul class="checklist">{info.points.map((p) => <li><Icon name="check" /><span><T text={p} /></span></li>)}</ul>}
+        <ul class="tier__meta">
+          <li><Icon name="key" /> {info.search}</li>
+          <li><Icon name="wallet" /> {info.vacant}</li>
+        </ul>
+        <a class:list={['btn', t.featured ? 'btn--primary' : 'btn--secondary']} href={t.id === 'care' ? url(lang, 'care') : url(lang, 'contact')}>{t.id === 'care' ? x.common.learnMore : x.common.talk}<span class="visually-hidden">: {info.name}</span> <Icon name="arrow" /></a>
+      </article>
+    );
+  })}
+</div>
+<style>
+  .tiers { display: grid; gap: var(--sp-5); align-items: stretch; }
+  @media (min-width: 900px) { .tiers { grid-template-columns: repeat(3, 1fr); } }
+  .tier { display: flex; flex-direction: column; gap: var(--sp-2); position: relative; }
+  .tier--featured { border-color: var(--c-primary); box-shadow: 0 0 0 1px var(--c-primary), 0 20px 40px rgb(26 79 214 / .12); }
+  .tier__pop { position: absolute; inset-block-start: -13px; inset-inline-start: var(--sp-5); margin: 0; background: var(--c-primary); color: #fff; font-size: var(--fs-xs); font-weight: 700; padding: 3px 12px; border-radius: 999px; }
+  .tier .example-badge { align-self: flex-start; }
+  .tier__name { font-size: var(--fs-xl); margin: var(--sp-2) 0 0; }
+  .tier__for { color: var(--c-muted); margin: 0; min-block-size: 2.8em; }
+  .tier__price { font-size: var(--fs-2xl); font-weight: 700; margin: var(--sp-2) 0 0; color: var(--c-ink); line-height: 1.1; }
+  .tier__price small { font-size: var(--fs-sm); color: var(--c-muted); font-weight: 500; }
+  .tier__sub { margin: 0 0 var(--sp-3); color: var(--c-muted); font-size: var(--fs-sm); }
+  .tier .checklist { flex: 1; }
+  .tier__meta { list-style: none; display: grid; gap: 6px; padding: var(--sp-3) 0; margin: var(--sp-2) 0; border-block: 1px solid var(--c-line); font-size: var(--fs-sm); color: var(--c-ink-2); }
+  .tier__meta li { display: flex; gap: 8px; align-items: center; }
+  .tier__meta :global(.icon) { color: var(--c-secondary); flex: none; }
+  .tier .btn { justify-content: center; margin-block-start: auto; }
+</style>

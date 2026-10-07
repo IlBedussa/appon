@@ -1,0 +1,37 @@
+---
+// Pagina "Live rent valuation": modulo + risultato trasparente + modulo per valutazione professionale (stub).
+import PageHero from '../PageHero.astro';
+import RentForm from '../tools/RentForm.astro';
+import LeadForm from '../LeadForm.astro';
+import Sources from '../Sources.astro';
+import Icon from '../Icon.astro';
+import { tx, type Locale } from '../../i18n/config';
+interface Props { lang: Locale }
+const { lang } = Astro.props;
+const x = tx(lang);
+const r = x.tools.rent;
+---
+<PageHero eyebrow={r.eyebrow} title={r.h1} lead={r.lead} />
+
+<section class="section section--tight">
+  <div class="container">
+    <RentForm lang={lang} />
+    <Sources lang={lang} ids={['cbsRentQ1_2026', 'cbsRoomsQ1_2025', 'streets']} />
+  </div>
+</section>
+
+<section class="section section--surface">
+  <div class="container rent-lead">
+    <div class="rent-lead__why">
+      <span class="icon-badge"><Icon name="info" /></span>
+      <p class="rr-disclaimer">{r.disclaimer}</p>
+      <p class="rr-muted">{r.confHelp}</p>
+    </div>
+    <LeadForm lang={lang} id="rent-lead" context="rent-estimate" />
+  </div>
+</section>
+<style>
+  .rent-lead { display: grid; gap: var(--sp-6); align-items: start; }
+  @media (min-width: 1024px) { .rent-lead { grid-template-columns: 1fr 1.4fr; } }
+  .rent-lead__why { display: grid; gap: var(--sp-3); } .rent-lead__why .rr-disclaimer { margin: 0; }
+</style>

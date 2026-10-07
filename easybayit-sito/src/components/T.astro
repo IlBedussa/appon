@@ -1,0 +1,7 @@
+---
+// Rende un testo evidenziando i segnaposto tra parentesi quadre
+// (es. [TO CONFIRM], [DA CONFERMARE], [לאישור]) per trovarli facilmente in revisione.
+interface Props { text: string }
+const parts = Astro.props.text.split(/(\[[^\]]+\])/g).filter((p) => p !== '');
+---
+{parts.map((p) => (p.startsWith('[') && p.endsWith(']') ? <span class="ph">{p}</span> : p))}

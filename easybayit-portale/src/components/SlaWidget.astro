@@ -1,0 +1,28 @@
+---
+// Widget "tempi di intervento" per il proprietario: mediane sulle proprie richieste (RLS)
+// confrontate con l'aggregato anonimo del portafoglio Easybayit (funzione portfolio_sla_stats).
+import Icon from './Icon.astro';
+import { fill } from '../i18n';
+import { median, duration } from '../lib/sla';
+const { t, supabase, intl } = Astro.locals;
+const since = new Date(Date.now() - 365 * 86400000).toISOString();
+const [{ data: rows }, { data: port }] = await Promise.all([
+  supabase.from('maintenance_sla').select('response_hours, resolution_hours').gte('created_at', since),
+  supabase.rpc('portfolio_sla_stats', { p_months: 12 }),
+]);
+const resp = median((rows ?? []).map((r) => Number(r.response_hours)).filter((n) => n > 0));
+const reso = median((rows ?? []).map((r) => Number(r.resolution_hours)).filter((n) => n > 0));
+const pr = median((port ?? []).map((r: any) => Number(r.median_response_hours)));
+const ps = median((port ?? []).map((r: any) => Number(r.median_resolution_hours)));
+const d = (h: number | null) => duration(h, t.pri, intl);
+---
+<section class="dcard" aria-labelledby="h-sla" data-testid="sla-widget">
+  <div class="dcard-head"><span><strong id="h-sla">{t.pri.slaTitle}</strong><small>{t.pri.slaSub}</small></span><Icon name="clock" /></div>
+  {resp == null && reso == null ? <p class="empty">{t.pri.slaNone}</p> : (
+    <div class="st-sum">
+      <div><small>{t.pri.slaResponse}</small><strong>{d(resp)}</strong></div>
+      <div class="st-net"><small>{t.pri.slaResolution}</small><strong>{d(reso)}</strong></div>
+    </div>
+  )}
+  {pr != null && <p class="muted small mt-0">{fill(t.pri.slaPortfolio, { r: d(pr), s: d(ps) })}</p>}
+</section>

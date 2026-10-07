@@ -1,0 +1,247 @@
+---
+// Pagina articolo del blog: intestazione, indice, corpo Markdown, FAQ, fonti, link interni,
+// articoli correlati e CTA. JSON-LD Article + FAQPage + BreadcrumbList dal frontmatter.
+import Base from '../../layouts/Base.astro';
+import Icon from '../Icon.astro';
+import PostCard from './PostCard.astro';
+import { render } from 'astro:content';
+import { tb, url, t, langMeta, locales, type Locale } from '../../i18n/config';
+import { getPosts, postUrl, readingMinutes, alternatesOf, related, fmtDate, type Post } from '../../lib/blog';
+interface Props { post: Post }
+const { post } = Astro.props;
+const d = post.data;
+const lang = d.lang as Locale;
+const b = tb(lang);
+const intl = langMeta[lang].intl;
+const all = await getPosts();
+const alternates = alternatesOf(post, all);
+const rel = related(post, all.filter((p) => p.data.lang === lang));
+const { Content, headings } = await render(post);
+const toc = headings.filter((h) => h.depth === 2);
+const site = Astro.site ?? new URL('https://www.easybayit.example');
+const abs = (p: string) => new URL(p, site).href;
+const isLegal = d.cluster === 'tax-legal' || /law|tax/.test(d.translationKey);
+
+// JSON-LD: Article, FAQPage, BreadcrumbList
+const jsonLd = [
+  {
+    '@context': 'https://schema.org', '@type': 'Article',
+    headline: d.title, description: d.description, inLanguage: lang,
+    datePublished: d.pubDate.toISOString(), dateModified: (d.updatedDate ?? d.pubDate).toISOString(),
+    author: { '@type': 'Organization', name: 'Easybayit' },
+    publisher: { '@type': 'Organization', name: 'Easybayit', url: abs(url(lang, 'home')) },
+    mainEntityOfPage: abs(postUrl(post)), keywords: d.keywords.join(', '),
+    citation: d.sources.map((s) => s.url),
+  },
+  {
+    '@context': 'https://schema.org', '@type': 'FAQPage',
+    mainEntity: d.faq.map((f) => ({ '@type': 'Question', name: f.question, acceptedAnswer: { '@type': 'Answer', text: f.answer } })),
+  },
+  {
+    '@context': 'https://schema.org', '@type': 'BreadcrumbList',
+    itemListElement: [
+      { '@type': 'ListItem', position: 1, name: 'Easybayit', item: abs(url(lang, 'home')) },
+      { '@type': 'ListItem', position: 2, name: b.nav, item: abs(url(lang, 'blog')) },
+      { '@type': 'ListItem', position: 3, name: d.title, item: abs(postUrl(post)) },
+    ],
+  },
+];
+const others = locales.filter((l) => l !== lang && alternates[l]);
+---
+<Base lang={lang} page="blog" title={d.metaTitle} description={d.description}
+  alternates={alternates} ogType="article" noindex={d.draft}>
+  <Fragment slot="head">
+    <meta property="article:published_time" content={d.pubDate.toISOString()} />
+    {jsonLd.map((j) => <script type="application/ld+json" set:html={JSON.stringify(j)} />)}
+  </Fragment>
+
+  <header class="bl-hero">
+    <div class="container bl-hero__in">
+      <nav class="bl-crumbs" aria-label="Breadcrumb">
+        <ol>
+          <li><a href={url(lang, 'home')}>{t(lang).nav.home}</a></li>
+          <li><a href={url(lang, 'blog')}>{b.nav}</a></li>
+          <li><span>{b.clusters[d.cluster] ?? d.cluster}</span></li>
+        </ol>
+      </nav>
+      {d.draft && <p class="bl-hero__draft"><span class="bl-draft">{b.draftBadge}</span> <span>{b.draftNote}</span></p>}
+      <h1>{d.title}</h1>
+      <p class="bl-hero__lead">{d.description}</p>
+      <p class="bl-hero__meta">
+        <span>{b.by} {d.author}</span>
+        <span aria-hidden="true">·</span>
+        <span>{b.published} <time datetime={d.pubDate.toISOString().slice(0, 10)}>{fmtDate(d.pubDate, intl)}</time></span>
+        {d.updatedDate && d.updatedDate.getTime() !== d.pubDate.getTime() && (
+          <><span aria-hidden="true">·</span><span>{b.updated} <time datetime={d.updatedDate.toISOString().slice(0, 10)}>{fmtDate(d.updatedDate, intl)}</time></span></>
+        )}
+        <span aria-hidden="true">·</span>
+        <span>{b.readTime.replace('{n}', String(readingMinutes(post)))}</span>
+      </p>
+      {others.length > 0 && (
+        <p class="bl-hero__langs">{b.otherLangs}: {others.map((l, i) => <>{i > 0 && ', '}<a href={alternates[l]} hreflang={l} lang={l}>{langMeta[l].label}</a></>)}</p>
+      )}
+    </div>
+  </header>
+
+  <div class="section bl-sec">
+    <div class="container bl-layout">
+      <aside class="bl-aside">
+        {toc.length > 2 && (
+          <nav class="card card--flat bl-toc" aria-labelledby="bl-toc-t">
+            <h2 id="bl-toc-t">{b.tocTitle}</h2>
+            <ol>{toc.map((h) => <li><a href={`#${h.slug}`}>{h.text}</a></li>)}<li><a href="#faq">{b.faqTitle}</a></li><li><a href="#sources">{b.sourcesTitle}</a></li></ol>
+          </nav>
+        )}
+        <div class="card bl-mini">
+          <p class="bl-mini__t">{b.ctaTitle}</p>
+          <a class="btn btn--primary btn--sm" href={url(lang, 'contact')}>{b.ctaPrimary}</a>
+        </div>
+      </aside>
+
+      <article class="bl-body">
+        {isLegal && <div class="notice" role="note"><Icon name="info" /><p>{b.legalNote} <a href={url(lang, 'legal')}>{b.legalHub}</a></p></div>}
+        <div class="bl-prose"><Content /></div>
+
+        <section id="faq" class="bl-block" aria-labelledby="faq-t">
+          <h2 id="faq-t">{b.faqTitle}</h2>
+          <div class="bl-faq">
+            {d.faq.map((f) => (
+              <details>
+                <summary>{f.question}</summary>
+                <p>{f.answer}</p>
+              </details>
+            ))}
+          </div>
+        </section>
+
+        <section id="sources" class="bl-block" aria-labelledby="src-t">
+          <h2 id="src-t">{b.sourcesTitle}</h2>
+          <ol class="bl-sources">
+            {d.sources.map((s) => (
+              <li>
+                <a href={s.url} rel="noopener" target="_blank">{s.title}</a>
+                <span class="bl-sources__meta">{s.publisher} · {b.accessed.replace('{date}', fmtDate(s.accessed, intl))}</span>
+              </li>
+            ))}
+          </ol>
+        </section>
+
+        {d.internalLinks.length > 0 && (
+          <section class="bl-block" aria-labelledby="links-t">
+            <h2 id="links-t">{b.relatedPages}</h2>
+            <ul class="bl-links">
+              {d.internalLinks.map((l) => <li><a href={l.href}><span>{l.anchor}</span> <Icon name="arrow" /></a></li>)}
+              <li><a href={url(lang, 'legal')}><span>{b.legalHub}</span> <Icon name="arrow" /></a></li>
+            </ul>
+          </section>
+        )}
+      </article>
+    </div>
+  </div>
+
+  {rel.length > 0 && (
+    <section class="section section--surface" aria-labelledby="rel-t">
+      <div class="container">
+        <div class="bl-relhead">
+          <h2 id="rel-t">{b.relatedTitle}</h2>
+          <a href={url(lang, 'blog')}>{b.back} <Icon name="arrow" /></a>
+        </div>
+        <ul class="bl-relgrid" role="list">{rel.map((p) => <li><PostCard post={p} lang={lang} /></li>)}</ul>
+      </div>
+    </section>
+  )}
+
+  <section class="section section--tight">
+    <div class="container">
+      <div class="bl-cta">
+        <div>
+          <h2>{b.ctaTitle}</h2>
+          <p>{b.ctaText}</p>
+        </div>
+        <div class="btn-row">
+          <a class="btn btn--primary" href={url(lang, 'contact')}>{b.ctaPrimary} <Icon name="arrow" /></a>
+          <a class="btn btn--ghost-light" href={url(lang, 'pricing')}>{b.ctaSecondary}</a>
+        </div>
+      </div>
+    </div>
+  </section>
+</Base>
+
+<style>
+  .bl-hero {
+    padding-block: var(--sp-6) var(--sp-7); border-block-end: 1px solid var(--c-line);
+    background: radial-gradient(60rem 30rem at 85% -10%, var(--c-primary-50), transparent 60%),
+      radial-gradient(40rem 24rem at 0% 110%, var(--c-secondary-50), transparent 60%);
+  }
+  .bl-hero__in > * { max-inline-size: 900px; }
+  .bl-hero h1 { font-size: var(--fs-2xl); max-inline-size: 26ch; margin-block: var(--sp-3) var(--sp-3); }
+  .bl-hero__lead { font-size: var(--fs-lg); color: var(--c-ink-2); max-inline-size: 62ch; }
+  .bl-hero__meta { display: flex; flex-wrap: wrap; gap: 6px 8px; font-size: var(--fs-sm); color: var(--c-muted); margin: 0; }
+  .bl-hero__langs { font-size: var(--fs-sm); color: var(--c-muted); margin: var(--sp-2) 0 0; }
+  .bl-hero__draft { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: var(--fs-sm); color: var(--c-warning); margin: var(--sp-3) 0 0; }
+  .bl-crumbs ol { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px; font-size: var(--fs-sm); color: var(--c-muted); }
+  .bl-crumbs li + li::before { content: '/'; margin-inline-end: 4px; color: var(--c-line-strong); }
+  .bl-crumbs a { color: var(--c-ink-2); }
+
+  .bl-sec { padding-block-start: var(--sp-6); }
+  .bl-layout { display: grid; gap: var(--sp-6); align-items: start; }
+  @media (min-width: 1024px) {
+    .bl-layout { grid-template-columns: minmax(0, 1fr) 280px; }
+    .bl-aside { order: 2; position: sticky; inset-block-start: calc(var(--header-h) + var(--sp-4)); }
+  }
+  .bl-aside { display: grid; gap: var(--sp-4); }
+  .bl-toc h2 { font-size: var(--fs-md); }
+  .bl-toc ol { margin: 0; padding-inline-start: 1.2em; display: grid; gap: 6px; font-size: var(--fs-sm); }
+  .bl-mini { display: grid; gap: var(--sp-3); background: var(--c-primary-50); border-color: var(--c-primary-100); }
+  .bl-mini__t { margin: 0; font-weight: 700; color: var(--c-ink); }
+  @media (max-width: 1023px) { .bl-mini { display: none; } }
+
+  .bl-body { max-inline-size: 760px; min-inline-size: 0; }
+  .bl-body > .notice { margin-block-end: var(--sp-5); }
+  .bl-prose { font-size: var(--fs-md); line-height: 1.7; color: var(--c-ink-2); overflow-wrap: anywhere; }
+  .bl-prose :global(h2) { font-size: var(--fs-xl); color: var(--c-ink); margin-block: var(--sp-7) var(--sp-3); scroll-margin-block-start: calc(var(--header-h) + 16px); }
+  .bl-prose :global(h3) { font-size: var(--fs-lg); color: var(--c-ink); margin-block: var(--sp-5) var(--sp-2); }
+  .bl-prose :global(p), .bl-prose :global(li) { color: var(--c-ink-2); }
+  .bl-prose :global(ul), .bl-prose :global(ol) { padding-inline-start: 1.3em; display: grid; gap: 6px; }
+  .bl-prose :global(strong) { color: var(--c-ink); }
+  .bl-prose :global(a) { overflow-wrap: anywhere; }
+  .bl-prose :global(.ph) { white-space: normal; }
+  .bl-prose :global(blockquote) { margin: var(--sp-5) 0; padding: var(--sp-3) var(--sp-5); border-inline-start: 4px solid var(--c-secondary); background: var(--c-secondary-50); border-radius: var(--r-md); }
+  .bl-prose :global(table) { display: block; overflow-x: auto; border-collapse: collapse; inline-size: 100%; font-size: var(--fs-sm); margin-block: var(--sp-4); }
+  .bl-prose :global(th), .bl-prose :global(td) { border: 1px solid var(--c-line); padding: 8px 12px; text-align: start; vertical-align: top; }
+  .bl-prose :global(th) { background: var(--c-surface); color: var(--c-ink); }
+  .bl-prose :global(li:has(> input[type='checkbox'])) { list-style: none; margin-inline-start: -1.3em; }
+  .bl-prose :global(input[type='checkbox']) { margin-inline-end: 8px; accent-color: var(--c-secondary); }
+  .bl-prose :global(hr) { border: 0; border-block-start: 1px solid var(--c-line); margin-block: var(--sp-6); }
+
+  .bl-block { margin-block-start: var(--sp-7); padding-block-start: var(--sp-6); border-block-start: 1px solid var(--c-line); scroll-margin-block-start: calc(var(--header-h) + 16px); }
+  .bl-block h2 { font-size: var(--fs-xl); }
+  .bl-faq { display: grid; gap: var(--sp-3); }
+  .bl-faq details { border: 1px solid var(--c-line); border-radius: var(--r-md); background: #fff; }
+  .bl-faq summary { cursor: pointer; padding: var(--sp-4) var(--sp-5); font-weight: 600; color: var(--c-ink); list-style: none; display: flex; justify-content: space-between; gap: var(--sp-3); }
+  .bl-faq summary::-webkit-details-marker { display: none; }
+  .bl-faq summary::after { content: '+'; font-size: 1.3em; line-height: 1; color: var(--c-primary); flex: none; }
+  .bl-faq details[open] summary::after { content: '−'; }
+  .bl-faq summary:focus-visible { outline: none; box-shadow: var(--focus); border-radius: var(--r-md); }
+  .bl-faq details p { margin: 0; padding: 0 var(--sp-5) var(--sp-4); color: var(--c-ink-2); }
+  .bl-sources { margin: 0; padding-inline-start: 1.4em; display: grid; gap: var(--sp-3); font-size: var(--fs-sm); }
+  .bl-sources a { font-weight: 600; overflow-wrap: anywhere; }
+  .bl-sources__meta { display: block; color: var(--c-muted); font-size: var(--fs-xs); }
+  .bl-links { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--sp-2); grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr)); }
+  .bl-links a { display: flex; justify-content: space-between; align-items: center; gap: var(--sp-3); padding: var(--sp-3) var(--sp-4); border: 1px solid var(--c-line); border-radius: var(--r-md); text-decoration: none; font-weight: 600; font-size: var(--fs-sm); }
+  .bl-links a:hover { border-color: var(--c-primary-100); background: var(--c-primary-50); }
+  .bl-links :global(.icon) { flex: none; inline-size: 16px; block-size: 16px; }
+  :global([dir='rtl']) .bl-links :global(.icon), :global([dir='rtl']) .bl-relhead :global(.icon) { transform: scaleX(-1); }
+
+  .bl-relhead { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: var(--sp-3); margin-block-end: var(--sp-5); }
+  .bl-relhead h2 { margin: 0; }
+  .bl-relhead a { display: inline-flex; gap: 6px; align-items: center; font-weight: 600; }
+  .bl-relgrid { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--sp-5); grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); }
+  .bl-relgrid > li { display: grid; }
+
+  .bl-cta { display: grid; gap: var(--sp-5); align-items: center; background: linear-gradient(135deg, #0b1324 0%, #13265c 100%); color: #d6deee; border-radius: var(--r-xl); padding: var(--sp-7) var(--sp-6); }
+  .bl-cta h2 { color: #fff; font-size: var(--fs-xl); }
+  .bl-cta p { margin: 0; max-inline-size: 56ch; }
+  .bl-cta .btn--primary { background: #fff; color: var(--c-primary-700); }
+  @media (min-width: 900px) { .bl-cta { grid-template-columns: 1fr auto; padding: var(--sp-7) var(--sp-8); } }
+</style>

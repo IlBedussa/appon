@@ -1,0 +1,35 @@
+---
+// Intestazione standard delle pagine interne (eyebrow + H1 + lead + slot opzionale per illustrazione).
+import T from './T.astro';
+interface Props { eyebrow?: string; title: string; lead?: string; compact?: boolean; visualDesktopOnly?: boolean }
+const { eyebrow, title, lead, compact = false, visualDesktopOnly = false } = Astro.props;
+const hasVisual = Astro.slots.has('visual');
+---
+<section class:list={['page-hero', { 'page-hero--compact': compact }]}>
+  <div class:list={['container', { split: hasVisual }]}>
+    <div>
+      {eyebrow && <p class="eyebrow">{eyebrow}</p>}
+      <h1>{title}</h1>
+      {lead && <p class="page-hero__lead"><T text={lead} /></p>}
+      <slot name="actions" />
+    </div>
+    {hasVisual && <div class:list={['page-hero__visual', { 'desktop-only': visualDesktopOnly }]}><slot name="visual" /></div>}
+  </div>
+</section>
+<style>
+  .page-hero {
+    padding-block: var(--sp-7) var(--sp-7);
+    background:
+      radial-gradient(60rem 30rem at 85% -10%, var(--c-primary-50), transparent 60%),
+      radial-gradient(40rem 24rem at 0% 110%, var(--c-secondary-50), transparent 60%);
+    border-block-end: 1px solid var(--c-line);
+  }
+  @media (min-width: 1024px) { .page-hero { padding-block: var(--sp-8); } }
+  /* compact: il contenuto principale (es. i piani) entra nel primo viewport */
+  .page-hero--compact { padding-block: var(--sp-5) var(--sp-5); }
+  @media (min-width: 1024px) { .page-hero--compact { padding-block: var(--sp-6) var(--sp-6); } }
+  @media (max-width: 959px) { .page-hero__visual.desktop-only { display: none; } }
+  .page-hero h1 { max-inline-size: 22ch; text-wrap: balance; hyphens: manual; }
+  .page-hero__lead { font-size: var(--fs-lg); color: var(--c-ink-2); max-inline-size: 60ch; }
+  .page-hero :global(.btn-row) { margin-block-start: var(--sp-5); }
+</style>

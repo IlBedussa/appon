@@ -1,0 +1,342 @@
+---
+/*
+ * Popup di acquisizione contatti (4 lingue), inviato a /api/lead/ (kind "popup": Resend lato server, mock in locale).
+ * - Variante A (principale): "Commissioni nascoste? Scoprilo in 2 minuti." → check gratuito della gestione attuale.
+ *   Variante B (morbida): stima d'affitto gratuita. Assegnazione 50/50 salvata in localStorage (eb_lp_v),
+ *   la variante e il trigger vengono inviati con il lead (campi "variant" e "trigger").
+ * - Trigger: desktop = exit intent (mouse che esce dal bordo superiore); mobile/touch = 45 s oppure 60% di scroll.
+ *   Mai nei primi 10 s. Frequenza: al massimo una volta ogni 7 giorni, mai più dopo un invio (localStorage eb_lp).
+ * - <dialog> nativo con showModal(): sta nel top layer (nessuno spostamento del layout), Esc chiude,
+ *   trappola del focus, focus restituito all'elemento precedente. Su mobile è un bottom sheet.
+ * - Animazioni solo CSS, disattivate con prefers-reduced-motion.
+ * - Test / screenshot: ?popup=a oppure ?popup=b apre subito la variante (ignora limiti e frequenza).
+ */
+import Icon from './Icon.astro';
+import T from './T.astro';
+import { popup } from '../i18n/popup';
+import { cityNames } from '../data/cityNames';
+import { url, type Locale } from '../i18n/config';
+interface Props { lang: Locale }
+const { lang } = Astro.props;
+const p = popup[lang];
+const cities = Object.entries(cityNames).map(([k, n]) => ({ k, n: n[lang] }));
+const V = { a: p.a, b: p.b } as const;
+---
+<dialog class="lp" id="lead-popup" aria-labelledby="lp-title-a" data-lp>
+  <div class="lp__shell" tabindex="-1">
+    <button type="button" class="lp__close" data-lp-close aria-label={p.close}><Icon name="close" /></button>
+    <span class="lp__grab" aria-hidden="true"></span>
+
+    <div class="lp__panel">
+      {(['a', 'b'] as const).map((k) => (
+        <div class="lp__copy" data-v={k} hidden={k === 'b'}>
+          <p class="lp__eyebrow"><span class="lp__dot" aria-hidden="true"></span>{V[k].eyebrow}</p>
+          <h2 class="lp__title" id={`lp-title-${k}`}>{(() => {
+            // Evidenzia la domanda iniziale del titolo (fino al primo "?"), es. "Commissioni nascoste?"
+            const i = V[k].title.indexOf('?');
+            return i > 0 && i < V[k].title.length - 1
+              ? <><span class="lp__hl">{V[k].title.slice(0, i + 1)}</span>{V[k].title.slice(i + 1)}</>
+              : V[k].title;
+          })()}</h2>
+          <p class="lp__lead" id={`lp-lead-${k}`}>{V[k].lead}</p>
+          <ul class="lp__points">
+            {V[k].points.map((pt) => <li><Icon name="check" /><span>{pt}</span></li>)}
+          </ul>
+        </div>
+      ))}
+      {/* Illustrazione: rendiconto con importi mascherati (nessun dato inventato). */}
+      <div class="lp__stmt" aria-hidden="true">
+        <p class="lp__stmt-t"><Icon name="doc" /> {p.statement.title}</p>
+        {p.statement.rows.map((r, i) => (
+          <p class="lp__row" style={`--d:${i}`}><span>{r}</span><b dir="ltr">₪ ····</b><i class="lp__flag"><span data-f="a">?</span><span data-f="b">✓</span></i></p>
+        ))}
+        <p class="lp__row lp__row--net"><span>{p.statement.net}</span><b dir="ltr">₪ ····</b></p>
+      </div>
+    </div>
+
+    <div class="lp__body">
+      <form class="lp__form" novalidate data-lp-form
+        data-err-required={p.errRequired} data-err-contact={p.errContact} data-err-consent={p.errConsent}
+        data-sending={p.sending} data-fail={p.fail}>
+        <div class="lp__field">
+          <label for="lp-name">{p.name}</label>
+          <input class="input" id="lp-name" name="name" autocomplete="name" required minlength="2" maxlength="100" aria-describedby="lp-name-err" />
+          <p class="field-error" id="lp-name-err"></p>
+        </div>
+        <div class="lp__field">
+          <label for="lp-contact">{p.contact}</label>
+          <input class="input" id="lp-contact" name="contact" type="text" inputmode="email" autocomplete="email" dir="auto" required maxlength="160" placeholder={p.contactHint} aria-describedby="lp-contact-err" />
+          <p class="field-error" id="lp-contact-err"></p>
+        </div>
+        <div class="lp__row2">
+          <div class="lp__field">
+            <label for="lp-city">{p.city}</label>
+            <select class="select" id="lp-city" name="city">
+              <option value="">{p.choose}</option>
+              {cities.map((c) => <option value={c.k}>{c.n}</option>)}
+              <option value="other">{p.cityOther}</option>
+            </select>
+          </div>
+          <div class="lp__field">
+            <label for="lp-type">{p.type}</label>
+            <select class="select" id="lp-type" name="propertyType">
+              <option value="">{p.choose}</option>
+              {p.types.map((o) => <option value={o.v}>{o.l}</option>)}
+            </select>
+          </div>
+        </div>
+        <div class="lp__consent">
+          <label class="check" for="lp-consent">
+            <input id="lp-consent" name="consent" type="checkbox" required aria-describedby="lp-consent-err" />
+            <span>{p.consentA}<a href={url(lang, 'privacy')}>{p.consentLink}</a>{p.consentB}</span>
+          </label>
+          <p class="field-error" id="lp-consent-err"></p>
+        </div>
+        <div class="hp" aria-hidden="true"><label for="lp-website">Website</label><input id="lp-website" name="website" type="text" tabindex="-1" autocomplete="off" /></div>
+        <button class="btn btn--primary lp__cta" type="submit">
+          {(['a', 'b'] as const).map((k) => <span data-v={k} hidden={k === 'b'}>{V[k].cta}</span>)}
+          <Icon name="arrow" class="icon--dir" />
+        </button>
+        <p class="lp__status" role="status" aria-live="polite"></p>
+        <button type="button" class="lp__later" data-lp-close>{p.later}</button>
+      </form>
+      <div class="lp__done" hidden tabindex="-1">
+        <span class="lp__done-ic" aria-hidden="true"><Icon name="check" /></span>
+        <p class="lp__done-t">{p.successTitle}</p>
+        <p><T text={p.success} /></p>
+        <button type="button" class="btn btn--secondary" data-lp-close>{p.close}</button>
+      </div>
+    </div>
+  </div>
+</dialog>
+
+<script>
+  import { sendLead } from '../lib/lead-client';
+  const dlg = document.querySelector<HTMLDialogElement>('dialog[data-lp]');
+  if (dlg && typeof dlg.showModal === 'function') {
+    const KEY = 'eb_lp', VKEY = 'eb_lp_v';
+    const WEEK = 7 * 24 * 3600 * 1000, ARM_MS = 10_000, MOBILE_MS = 45_000;
+    const ls = { get(k: string) { try { return localStorage.getItem(k); } catch { return null; } }, set(k: string, v: string) { try { localStorage.setItem(k, v); } catch { /* storage non disponibile */ } } };
+    const state: { last?: number; done?: boolean } = JSON.parse(ls.get(KEY) || '{}');
+    const save = () => ls.set(KEY, JSON.stringify(state));
+    const forced = new URLSearchParams(location.search).get('popup');
+    let variant = (forced === 'a' || forced === 'b') ? forced : ls.get(VKEY);
+    if (variant !== 'a' && variant !== 'b') { variant = Math.random() < 0.5 ? 'a' : 'b'; ls.set(VKEY, variant); }
+    // Mostra i testi della variante scelta.
+    dlg.querySelectorAll<HTMLElement>('[data-v]').forEach((el) => { el.hidden = el.dataset.v !== variant; });
+    dlg.setAttribute('aria-labelledby', `lp-title-${variant}`);
+    dlg.setAttribute('aria-describedby', `lp-lead-${variant}`);
+    dlg.dataset.variant = variant;
+
+    const desktop = matchMedia('(hover: hover) and (pointer: fine) and (min-width: 1024px)').matches;
+    const t0 = Date.now();
+    let trigger = '', openedAt = 0, lastFocus: Element | null = null, armed = false, pendingScroll = false;
+    const capped = () => !forced && (state.done || (state.last && Date.now() - state.last < WEEK));
+    // Non disturbare: un'altra finestra aperta, la chat della stima aperta o l'utente sta scrivendo in un campo.
+    const busy = () => !!document.querySelector('dialog[open]') || !!document.querySelector('.rchat.is-open') ||
+      (document.activeElement instanceof HTMLElement && document.activeElement.matches('input, textarea, select, [contenteditable]'));
+
+    function open(why: string) {
+      if (dlg!.open || capped() || busy() || (!forced && Date.now() - t0 < ARM_MS)) return false;
+      trigger = why; openedAt = Date.now(); lastFocus = document.activeElement;
+      state.last = Date.now(); save();
+      dlg!.showModal();
+      // Desktop: focus sul primo campo. Touch: focus sul riquadro (niente tastiera aperta di colpo).
+      if (desktop) dlg!.querySelector<HTMLInputElement>('#lp-name')?.focus({ preventScroll: true });
+      else dlg!.querySelector<HTMLElement>('.lp__shell')?.focus({ preventScroll: true });
+      detach();
+      return true;
+    }
+    function close() { if (dlg!.open) dlg!.close(); }
+    dlg.addEventListener('close', () => { if (lastFocus instanceof HTMLElement) lastFocus.focus({ preventScroll: true }); });
+    dlg.querySelectorAll('[data-lp-close]').forEach((b) => b.addEventListener('click', close));
+    // Clic sullo sfondo (fuori dal riquadro) = chiudi.
+    dlg.addEventListener('click', (e) => { if (e.target === dlg) close(); });
+    // Trappola del focus (Tab / Shift+Tab restano dentro il popup). Esc è gestito nativamente da <dialog>.
+    dlg.addEventListener('keydown', (e) => {
+      if (e.key !== 'Tab') return;
+      const f = [...dlg.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), input:not([tabindex="-1"]), select, [tabindex="0"]')]
+        .filter((el) => !el.closest('[hidden]') && el.offsetParent !== null);
+      if (!f.length) return;
+      const first = f[0], last = f[f.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    });
+
+    // --- Trigger ---
+    const onOut = (e: MouseEvent) => { if (!e.relatedTarget && e.clientY <= 0) open('exit'); };
+    const scrolled = () => (scrollY + innerHeight) / document.documentElement.scrollHeight >= 0.6;
+    const onScroll = () => { if (scrolled()) { if (armed) open('scroll'); else pendingScroll = true; } };
+    let timer = 0;
+    function detach() { document.removeEventListener('mouseout', onOut); removeEventListener('scroll', onScroll); clearTimeout(timer); }
+    if (forced) setTimeout(() => open('forced'), 300);
+    else if (!capped()) {
+      setTimeout(() => { armed = true; if (pendingScroll && scrolled()) open('scroll'); }, ARM_MS);
+      if (desktop) document.addEventListener('mouseout', onOut);
+      else {
+        addEventListener('scroll', onScroll, { passive: true });
+        const tick = () => { if (!open('time') && !dlg.open && !capped()) timer = window.setTimeout(tick, 15_000); };
+        timer = window.setTimeout(tick, MOBILE_MS);
+      }
+    }
+
+    // --- Invio ---
+    const form = dlg.querySelector<HTMLFormElement>('[data-lp-form]')!;
+    const msg = form.dataset as Record<string, string>;
+    const status = form.querySelector<HTMLElement>('.lp__status')!;
+    const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/, phoneRe = /^\+?[\d\s().-]{7,20}$/;
+    const setErr = (id: string, text: string) => {
+      const input = form.querySelector<HTMLInputElement>(`#${id}`)!;
+      form.querySelector(`#${id}-err`)!.textContent = text;
+      if (text) input.setAttribute('aria-invalid', 'true'); else input.removeAttribute('aria-invalid');
+      return !text;
+    };
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fd = new FormData(form);
+      const name = String(fd.get('name') ?? '').trim();
+      const contact = String(fd.get('contact') ?? '').trim();
+      const isEmail = contact.includes('@');
+      const okName = setErr('lp-name', name.length >= 2 ? '' : msg.errRequired);
+      const okContact = setErr('lp-contact', !contact ? msg.errRequired : (isEmail ? emailRe.test(contact) : phoneRe.test(contact)) ? '' : msg.errContact);
+      const okConsent = setErr('lp-consent', fd.get('consent') === 'on' ? '' : msg.errConsent);
+      if (!(okName && okContact && okConsent)) { form.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus(); return; }
+      const btn = form.querySelector<HTMLButtonElement>('.lp__cta')!;
+      btn.disabled = true; status.textContent = msg.sending; status.dataset.type = 'info';
+      const r = await sendLead('popup', {
+        name, email: isEmail ? contact : '', phone: isEmail ? '' : contact,
+        city: String(fd.get('city') ?? ''), propertyType: String(fd.get('propertyType') ?? ''),
+        consent: true, website: String(fd.get('website') ?? ''),
+        variant, trigger, context: `popup-${variant}`,
+      }, openedAt || t0);
+      btn.disabled = false;
+      if (r.ok) {
+        state.done = true; save();
+        form.hidden = true;
+        const done = dlg.querySelector<HTMLElement>('.lp__done')!;
+        done.hidden = false; done.focus();
+      } else { status.textContent = msg.fail; status.dataset.type = 'error'; }
+    });
+  }
+</script>
+
+<style>
+  .lp {
+    padding: 0; border: 0; background: transparent; color: var(--c-ink);
+    inline-size: min(920px, calc(100% - 32px)); max-inline-size: none; max-block-size: calc(100dvh - 32px);
+    overflow: visible;
+  }
+  .lp::backdrop { background: rgb(8 14 30 / .55); backdrop-filter: blur(3px); }
+  .lp__shell {
+    position: relative; display: grid; grid-template-columns: 1.05fr 1fr; overflow: hidden;
+    background: #fff; border-radius: var(--r-xl); box-shadow: 0 30px 80px rgb(8 14 30 / .35), 0 0 0 1px rgb(255 255 255 / .06);
+    max-block-size: calc(100dvh - 32px);
+  }
+  .lp__close {
+    position: absolute; inset-block-start: 12px; inset-inline-end: 12px; z-index: 2;
+    display: grid; place-items: center; inline-size: 40px; block-size: 40px; border-radius: 50%;
+    border: 1px solid var(--c-line); background: #fff; color: var(--c-ink); cursor: pointer;
+  }
+  .lp__close:hover { background: var(--c-surface); }
+  .lp__shell:focus { outline: none; }
+  .lp__close:focus-visible { outline: none; box-shadow: var(--focus); }
+  .lp__grab { display: none; }
+
+  /* Pannello scuro con il messaggio */
+  .lp__panel {
+    position: relative; padding: var(--sp-7) var(--sp-6) var(--sp-6); color: #c9d3e6; overflow: hidden;
+    background:
+      radial-gradient(28rem 18rem at 0% 0%, rgb(26 79 214 / .55), transparent 65%),
+      radial-gradient(22rem 16rem at 100% 100%, rgb(94 234 212 / .18), transparent 60%),
+      #0a1122;
+    display: flex; flex-direction: column; gap: var(--sp-5);
+  }
+  .lp__eyebrow {
+    display: inline-flex; align-items: center; gap: 8px; margin: 0 0 var(--sp-3); padding: 4px 12px;
+    font-size: var(--fs-xs); font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: #fff;
+    background: rgb(255 255 255 / .08); border: 1px solid rgb(255 255 255 / .14); border-radius: var(--r-pill);
+  }
+  :global([dir='rtl']) .lp__eyebrow { letter-spacing: 0; }
+  .lp__dot { inline-size: 8px; block-size: 8px; border-radius: 50%; background: #fbbf24; box-shadow: 0 0 0 4px rgb(251 191 36 / .2); }
+  .lp__title { color: #fff; font-size: clamp(1.6rem, 1.2rem + 1.4vw, 2.25rem); line-height: 1.12; letter-spacing: -0.02em; margin: 0 0 var(--sp-3); }
+  .lp__copy[data-v='b'] .lp__title { font-size: clamp(1.4rem, 1.1rem + 1vw, 1.85rem); }
+  .lp__copy[data-v='b'] .lp__dot { background: var(--c-accent); box-shadow: 0 0 0 4px rgb(94 234 212 / .2); }
+  .lp__lead { margin: 0 0 var(--sp-4); font-size: var(--fs-sm); line-height: 1.6; color: #b7c3da; }
+  .lp__points { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; font-size: var(--fs-sm); color: #e2e8f0; }
+  .lp__points li { display: flex; gap: 8px; align-items: flex-start; }
+  .lp__points :global(.icon) { color: var(--c-accent); inline-size: 1.1em; block-size: 1.1em; margin-block-start: .2em; }
+
+  .lp__stmt { margin-block-start: auto; background: rgb(255 255 255 / .06); border: 1px solid rgb(255 255 255 / .12); border-radius: var(--r-lg); padding: var(--sp-3) var(--sp-4); font-size: var(--fs-xs); }
+  .lp__stmt-t { display: flex; gap: 6px; align-items: center; margin: 0 0 6px; color: #fff; font-weight: 700; }
+  .lp__stmt-t :global(.icon) { inline-size: 14px; block-size: 14px; }
+  .lp__row { display: grid; grid-template-columns: 1fr auto 20px; gap: 10px; align-items: center; margin: 0; padding-block: 6px; border-block-start: 1px dashed rgb(255 255 255 / .12); }
+  .lp__row b { font-variant-numeric: tabular-nums; color: #fff; font-weight: 600; letter-spacing: .08em; }
+  .lp__flag { display: grid; place-items: center; inline-size: 20px; block-size: 20px; border-radius: 50%; background: #fbbf24; color: #0a1122; font-style: normal; font-weight: 800; font-size: 12px; }
+  .lp[data-variant='b'] .lp__flag { background: var(--c-accent); }
+  .lp:not([data-variant='b']) [data-f='b'], .lp[data-variant='b'] [data-f='a'] { display: none; }
+  .lp__hl { color: #fbbf24; }
+  .lp__copy[data-v='b'] .lp__hl { color: var(--c-accent); }
+  .lp__row--net { grid-template-columns: 1fr auto; border-block-start-style: solid; color: #fff; font-weight: 700; }
+
+  /* Modulo */
+  .lp__body { padding: var(--sp-7) var(--sp-6) var(--sp-5); overflow-y: auto; }
+  .lp__form { display: grid; gap: var(--sp-3); }
+  .lp__field { display: grid; gap: 6px; }
+  .lp__field label { font-weight: 600; font-size: var(--fs-sm); }
+  .lp__field .field-error:empty, .lp__consent .field-error:empty { display: none; }
+  .lp__row2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-3); }
+  .lp__consent label { display: flex; gap: 8px; align-items: flex-start; font-size: var(--fs-xs); color: var(--c-ink-2); line-height: 1.5; }
+  .lp__consent input { inline-size: 18px; block-size: 18px; margin-block-start: 1px; flex: none; accent-color: var(--c-primary); }
+  .lp__cta { inline-size: 100%; justify-content: center; text-align: center; min-block-size: 52px; font-size: var(--fs-md); box-shadow: 0 10px 24px rgb(26 79 214 / .28); }
+  .lp__status { margin: 0; font-size: var(--fs-sm); min-block-size: 0; }
+  .lp__status:empty { display: none; }
+  .lp__status[data-type='error'] { color: var(--c-error); }
+  .lp__later { justify-self: center; background: none; border: 0; padding: 6px 10px; color: var(--c-muted); font: inherit; font-size: var(--fs-sm); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; border-radius: 6px; }
+  .lp__later:hover { color: var(--c-ink); }
+  .lp__done { display: grid; gap: var(--sp-3); justify-items: start; align-content: center; min-block-size: 100%; outline: none; }
+  .lp__done[hidden] { display: none; }
+  .lp__done p { margin: 0; color: var(--c-ink-2); }
+  .lp__done-t { font-size: var(--fs-xl); font-weight: 700; color: var(--c-ink) !important; }
+  .lp__done-ic { display: grid; place-items: center; inline-size: 52px; block-size: 52px; border-radius: 50%; background: var(--c-success-50); color: var(--c-success); }
+  .lp__done-ic :global(.icon) { inline-size: 26px; block-size: 26px; }
+
+  /* Tablet: pannello compatto sopra il modulo */
+  @media (max-width: 860px) {
+    .lp__shell { grid-template-columns: 1fr; overflow-y: auto; }
+    .lp__stmt { display: none; }
+    .lp__panel { padding: var(--sp-6) var(--sp-5) var(--sp-5); }
+    .lp__body { padding: var(--sp-5); overflow: visible; }
+  }
+  /* Mobile: bottom sheet non invadente, ancorato in basso */
+  @media (max-width: 640px) {
+    .lp { inline-size: 100%; margin: auto 0 0; max-block-size: 92dvh; }
+    .lp__shell { border-radius: 22px 22px 0 0; max-block-size: 92dvh; }
+    .lp__grab { display: block; position: absolute; inset-block-start: 8px; inset-inline-start: 50%; translate: -50% 0; inline-size: 40px; block-size: 4px; border-radius: 4px; background: rgb(255 255 255 / .35); z-index: 2; }
+    .lp__close { inset-block-start: 14px; inset-inline-end: 14px; inline-size: 36px; block-size: 36px; background: rgb(255 255 255 / .1); border-color: rgb(255 255 255 / .2); color: #fff; }
+    .lp__panel { padding: var(--sp-6) var(--sp-4) var(--sp-4); }
+    .lp__title { font-size: 1.5rem; padding-inline-end: 36px; }
+    .lp__copy[data-v='b'] .lp__title { font-size: 1.3rem; }
+    .lp__lead { margin-block-end: 0; font-size: var(--fs-xs); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+    .lp__points { display: none; }
+    .lp__eyebrow { margin-block-end: var(--sp-2); }
+    .lp__form { gap: 10px; }
+    .lp .input, .lp .select { min-block-size: 44px; padding-block: 8px; }
+    .lp__cta { min-block-size: 48px; font-size: var(--fs-sm); }
+    .lp__body { padding: var(--sp-4) var(--sp-4) calc(var(--sp-4) + env(safe-area-inset-bottom)); }
+    .lp__row2 { grid-template-columns: 1fr 1fr; }
+  }
+
+  /* Animazioni (solo senza "riduci movimento") */
+  @media (prefers-reduced-motion: no-preference) {
+    .lp[open] .lp__shell { animation: lp-in .38s cubic-bezier(.2,.8,.2,1) both; }
+    .lp[open]::backdrop { animation: lp-fade .3s ease both; }
+    .lp[open] .lp__row { animation: lp-row .5s ease both; animation-delay: calc(.25s + var(--d, 3) * .12s); }
+    .lp[open] .lp__flag { animation: lp-pulse 2.4s ease-in-out infinite; animation-delay: calc(.8s + var(--d, 0) * .3s); }
+    @media (max-width: 640px) { .lp[open] .lp__shell { animation-name: lp-up; animation-duration: .42s; } }
+  }
+  @keyframes lp-in { from { opacity: 0; transform: translateY(14px) scale(.98); } to { opacity: 1; transform: none; } }
+  @keyframes lp-up { from { transform: translateY(100%); } to { transform: none; } }
+  @keyframes lp-fade { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes lp-row { from { opacity: 0; transform: translateX(-8px); } to { opacity: 1; transform: none; } }
+  @keyframes lp-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgb(251 191 36 / .5); } 50% { box-shadow: 0 0 0 6px rgb(251 191 36 / 0); } }
+</style>

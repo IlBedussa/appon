@@ -1,0 +1,44 @@
+---
+// Striscia "fiducia" (home): link a Transparency Pledge, report mensile, ispezioni, cambio gestore + videochiamata.
+import TIcon from './TIcon.astro';
+import { url, tt, type Locale, type PageKey } from '../../i18n/config';
+interface Props { lang: Locale }
+const { lang } = Astro.props;
+const x = tt(lang);
+const s = x.strip;
+---
+<section class="section tstrip" aria-labelledby="tstrip-title">
+  <div class="container">
+    <div class="tstrip__head" data-reveal>
+      <div>
+        <p class="eyebrow"><TIcon name="shield" /> {s.eyebrow}</p>
+        <h2 id="tstrip-title">{s.title}</h2>
+        <p>{s.lead}</p>
+      </div>
+      <a class="btn btn--secondary" href={url(lang, 'call')}><TIcon name="video" /> {s.callCta}</a>
+    </div>
+    <ul class="tstrip__grid">
+      {s.items.map((it, i) => (
+        <li data-reveal style={`transition-delay:${i * 70}ms`}>
+          <a class="card card--link tstrip__card" href={url(lang, it.key as PageKey)}>
+            <span class="icon-badge"><TIcon name={it.icon} /></span>
+            <h3>{it.title}</h3>
+            <p>{it.text}</p>
+            <span class="tstrip__more">{x.common.learnMore}<span class="visually-hidden">: {it.title}</span> <TIcon name="arrow" /></span>
+          </a>
+        </li>
+      ))}
+    </ul>
+  </div>
+</section>
+<style>
+  .tstrip { background: radial-gradient(50rem 20rem at 100% 0%, var(--c-primary-50), transparent 60%); }
+  .tstrip__head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: var(--sp-4); margin-block-end: var(--sp-6); }
+  .tstrip__head h2 { max-inline-size: 24ch; }
+  .tstrip__head p:not(.eyebrow) { color: var(--c-muted); font-size: var(--fs-lg); max-inline-size: 60ch; margin: 0; }
+  .tstrip__grid { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--sp-4); grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+  .tstrip__card { block-size: 100%; display: flex; flex-direction: column; }
+  .tstrip__card h3 { font-size: var(--fs-md); }
+  .tstrip__card p { font-size: var(--fs-sm); flex: 1; }
+  .tstrip__more { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; color: var(--c-primary); margin-block-start: var(--sp-3); font-size: var(--fs-sm); }
+</style>

@@ -1,0 +1,76 @@
+---
+// Checklist interattiva per cambiare gestore: spunte salvate solo nel browser (localStorage), stampabile.
+import TIcon from './TIcon.astro';
+import T from '../T.astro';
+import { tt, type Locale } from '../../i18n/config';
+interface Props { lang: Locale }
+const { lang } = Astro.props;
+const x = tt(lang);
+const s = x.sw;
+---
+<div class="ck" data-checklist data-progress={s.progress}>
+  <div class="ck__top">
+    <div class="ck__prog"><span data-prog-bar></span></div>
+    <p class="ck__count tnum" data-prog-text aria-live="polite"></p>
+    <button type="button" class="btn btn--secondary btn--sm ck__print" data-print><TIcon name="doc" /> {x.common.printPage}</button>
+  </div>
+  <ol class="ck__list">
+    {s.steps.map((st, i) => (
+      <li class="ck__item">
+        <label>
+          <input type="checkbox" data-step={i} />
+          <span class="ck__box" aria-hidden="true"><TIcon name="check" /></span>
+          <span class="ck__n tnum" aria-hidden="true">{i + 1}</span>
+          <span class="ck__body">
+            <span class="ck__title">{st.title} <span class:list={['ck__who', `ck__who--${st.who}`]}>{(s.whoLabels as Record<string, string>)[st.who]}</span></span>
+            <span class="ck__text">{st.text}</span>
+          </span>
+        </label>
+      </li>
+    ))}
+  </ol>
+  <p class="lawyer-mark ck__note"><TIcon name="info" /> <T text={s.noticeTemplate} /></p>
+</div>
+<script>
+  document.querySelectorAll<HTMLElement>('[data-checklist]').forEach((root) => {
+    const KEY = 'eb-switch-checklist';
+    const boxes = [...root.querySelectorAll<HTMLInputElement>('[data-step]')];
+    let saved: number[] = [];
+    try { saved = JSON.parse(localStorage.getItem(KEY) ?? '[]'); } catch { /* storage non disponibile */ }
+    boxes.forEach((b, i) => (b.checked = saved.includes(i)));
+    const update = () => {
+      const done = boxes.filter((b) => b.checked).length;
+      root.querySelector<HTMLElement>('[data-prog-bar]')!.style.inlineSize = `${(done / boxes.length) * 100}%`;
+      root.querySelector('[data-prog-text]')!.textContent = root.dataset.progress!.replace('{d}', String(done)).replace('{t}', String(boxes.length));
+      try { localStorage.setItem(KEY, JSON.stringify(boxes.flatMap((b, i) => (b.checked ? [i] : [])))); } catch { /* ignora */ }
+    };
+    boxes.forEach((b) => b.addEventListener('change', update));
+    root.querySelector('[data-print]')!.addEventListener('click', () => print());
+    update();
+  });
+</script>
+<style>
+  .ck__top { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3) var(--sp-4); margin-block-end: var(--sp-4); }
+  .ck__prog { flex: 1 1 200px; block-size: 8px; border-radius: 99px; background: var(--c-surface-2); overflow: hidden; }
+  .ck__prog span { display: block; block-size: 100%; inline-size: 0; background: linear-gradient(90deg, var(--c-secondary), var(--c-primary)); border-radius: 99px; transition: inline-size .3s ease; }
+  .ck__count { margin: 0; font-size: var(--fs-sm); font-weight: 600; color: var(--c-ink-2); }
+  .ck__list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--sp-2); }
+  .ck__item label { position: relative; display: grid; grid-template-columns: auto auto 1fr; gap: var(--sp-3); align-items: start; padding: var(--sp-4); border: 1px solid var(--c-line); border-radius: var(--r-lg); background: #fff; cursor: pointer; transition: border-color .15s, background .15s; }
+  .ck__item label:hover { border-color: var(--c-primary-100); }
+  .ck__item input { position: absolute; opacity: 0; inline-size: 1px; block-size: 1px; }
+  .ck__box { display: grid; place-items: center; inline-size: 26px; block-size: 26px; border-radius: 8px; border: 2px solid var(--c-line-strong); color: transparent; margin-block-start: 1px; transition: all .15s; }
+  .ck__item input:checked ~ .ck__box { background: var(--c-success); border-color: var(--c-success); color: #fff; }
+  .ck__item input:focus-visible ~ .ck__box { outline: 3px solid var(--c-primary-100); outline-offset: 2px; }
+  .ck__item:has(input:checked) label { background: var(--c-success-50); border-color: #bbf7d0; }
+  .ck__item:has(input:checked) .ck__title { text-decoration: line-through; text-decoration-color: rgb(21 128 61 / .5); }
+  .ck__n { font-size: var(--fs-lg); font-weight: 700; color: var(--c-primary-100); line-height: 1.2; min-inline-size: 1.4em; }
+  .ck__body { display: grid; gap: 4px; }
+  .ck__title { font-weight: 700; color: var(--c-ink); display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .ck__text { color: var(--c-ink-2); font-size: var(--fs-sm); }
+  .ck__who { font-size: 11px; font-weight: 700; border-radius: 999px; padding: 1px 9px; }
+  .ck__who--you { background: var(--c-warning-50); color: var(--c-warning); }
+  .ck__who--us { background: var(--c-primary-50); color: var(--c-primary-700); }
+  .ck__who--both { background: var(--c-secondary-50); color: var(--c-secondary); }
+  .ck__note { display: flex; gap: 6px; align-items: flex-start; margin-block-start: var(--sp-4); }
+  @media print { .ck__print { display: none; } .ck__item label { break-inside: avoid; } }
+</style>

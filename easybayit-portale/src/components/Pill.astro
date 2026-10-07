@@ -1,0 +1,6 @@
+---
+interface Props { tone?: 'ok' | 'warn' | 'urgent' | 'info' | 'neutral'; }
+const { tone = 'neutral' } = Astro.props;
+const cls = { ok: 'pill--occupied', warn: 'pill--maintenance', urgent: 'pill--urgent', info: 'pill--vacant', neutral: 'pill--neutral' }[tone];
+---
+<span class={`pill ${cls}`}><slot /></span>

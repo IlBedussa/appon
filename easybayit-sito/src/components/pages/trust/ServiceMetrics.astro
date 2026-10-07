@@ -1,0 +1,60 @@
+---
+// [DIETRO FLAG SHOW_SERVICE_METRICS — spenta di default]
+// Metriche di servizio pubbliche, lette ALLA BUILD dall'endpoint del portale (PORTAL_METRICS_URL,
+// es. https://portal.example/api/public/sla). Dati aggregati, mesi con ≥ 5 richieste, nessun dato personale.
+// Se l'URL manca o la chiamata fallisce: stato "dati non ancora disponibili" (mai numeri inventati).
+import TIcon from '../../trust/TIcon.astro';
+import PageHero from '../../PageHero.astro';
+import TrustCta from '../../trust/TrustCta.astro';
+import { tt, langMeta, type Locale } from '../../../i18n/config';
+interface Props { lang: Locale }
+const { lang } = Astro.props;
+const x = tt(lang);
+const m = x.metrics;
+type Row = { month: string; requests: number; median_response_hours: number | null; median_resolution_hours: number | null; p90_resolution_hours: number | null };
+let rows: Row[] = [];
+const src = process.env.PORTAL_METRICS_URL;
+if (src) {
+  try {
+    const r = await fetch(src, { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(8000) });
+    if (r.ok) { const d = await r.json(); rows = Array.isArray(d?.months) ? d.months : []; }
+  } catch { rows = []; }
+}
+const intl = langMeta[lang].intl;
+const month = (iso: string) => new Intl.DateTimeFormat(intl, { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(iso + 'T00:00:00Z'));
+const h = (v: number | null) => (v == null ? '—' : m.hours.replace('{n}', new Intl.NumberFormat(intl, { maximumFractionDigits: 1 }).format(v)));
+const last = rows.at(-1);
+const built = new Intl.DateTimeFormat(intl, { dateStyle: 'medium', timeZone: 'Asia/Jerusalem' }).format(new Date());
+---
+<PageHero eyebrow={m.eyebrow} title={m.h1} lead={m.lead} />
+<section class="section">
+  <div class="container">
+    {rows.length === 0 ? (
+      <div class="notice notice--info" role="note"><TIcon name="info" /><p>{m.empty}</p></div>
+    ) : (
+      <>
+        <dl class="sm-kpis">
+          <div><dt>{m.response}</dt><dd class="tnum">{h(last!.median_response_hours)}</dd></div>
+          <div><dt>{m.resolution}</dt><dd class="tnum">{h(last!.median_resolution_hours)}</dd></div>
+          <div><dt>{m.p90}</dt><dd class="tnum">{h(last!.p90_resolution_hours)}</dd></div>
+        </dl>
+        <div class="table-wrap" role="region" aria-label={m.eyebrow} tabindex="0">
+          <table>
+            <thead><tr><th scope="col">{m.month}</th><th scope="col">{m.requests}</th><th scope="col">{m.response}</th><th scope="col">{m.resolution}</th><th scope="col">{m.p90}</th></tr></thead>
+            <tbody>{rows.map((r) => <tr><th scope="row">{month(r.month)}</th><td class="tnum">{r.requests}</td><td class="tnum">{h(r.median_response_hours)}</td><td class="tnum">{h(r.median_resolution_hours)}</td><td class="tnum">{h(r.p90_resolution_hours)}</td></tr>)}</tbody>
+          </table>
+        </div>
+      </>
+    )}
+    <p class="sm-note">{m.method}</p>
+    <p class="sm-note">{m.updated.replace('{date}', built)}</p>
+  </div>
+</section>
+<TrustCta lang={lang} />
+<style>
+  .sm-kpis { display: grid; gap: var(--sp-4); grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); margin: 0 0 var(--sp-6); }
+  .sm-kpis div { background: var(--c-surface); border-radius: var(--r-lg); padding: var(--sp-5); }
+  .sm-kpis dt { color: var(--c-muted); font-size: var(--fs-sm); }
+  .sm-kpis dd { margin: 0; font-size: var(--fs-2xl); font-weight: 700; color: var(--c-primary); }
+  .sm-note { color: var(--c-muted); font-size: var(--fs-sm); margin-block-start: var(--sp-4); }
+</style>

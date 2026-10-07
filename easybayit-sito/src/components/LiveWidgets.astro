@@ -1,0 +1,108 @@
+---
+// Widget animati "stile live" per la home. SOLO illustrazione con dati di esempio (nessun dato reale, nessuna rete).
+// Animazioni solo CSS; disattivate con prefers-reduced-motion.
+import Icon from './Icon.astro';
+import T from './T.astro';
+import { url, t, td, type Locale } from '../i18n/config';
+interface Props { lang: Locale }
+const { lang } = Astro.props;
+const g = t(lang);
+const h = g.pages.home;
+const s = g.mock.statement;
+const m = g.mock.timeline;
+const badge = td(lang).badge;
+const tickerIcons = ['wallet', 'tool', 'chart', 'clock', 'doc', 'mail'];
+---
+<section class="section section--dark live" aria-labelledby="live-title">
+  <div class="container">
+    <div class="section-head">
+      <p class="eyebrow eyebrow--live"><span class="live-dot" aria-hidden="true"></span> {h.liveEyebrow}</p>
+      <h2 id="live-title">{h.liveTitle}</h2>
+      <p>{h.liveLead}</p>
+    </div>
+    <div class="live-grid">
+      <!-- 1. Rendiconto che si compone riga per riga -->
+      <div class="lw">
+        <div class="lw-head"><span><Icon name="chart" /> {s.title}</span><span class="lw-badge">{badge}</span></div>
+        <ul class="lw-rows">
+          {s.rows.map((r, i) => (
+            <li style={`--i:${i}`}><span>{r.label}</span><span dir="ltr" class:list={['amt', r.kind]}>{r.kind === 'in' ? '+' : '−'} ₪ ••••</span></li>
+          ))}
+        </ul>
+        <div class="lw-net"><span>{s.net}</span><span dir="ltr">₪ ••••</span></div>
+        <div class="lw-progress" aria-hidden="true"><span></span></div>
+      </div>
+
+      <!-- 2. Timeline di manutenzione che avanza -->
+      <div class="lw">
+        <div class="lw-head"><span><Icon name="tool" /> {m.title}</span><span class="lw-badge">{badge}</span></div>
+        <ol class="lw-tl">
+          {m.steps.map((st, i) => (
+            <li style={`--i:${i}`}><span class="lw-dot"><Icon name="check" /></span><span><strong>{st.label}</strong><small><T text={st.meta} /></small></span></li>
+          ))}
+        </ol>
+      </div>
+
+      <!-- 3. Ticker di notifiche -->
+      <div class="lw">
+        <div class="lw-head"><span><Icon name="info" /> {h.tickerTitle}</span><span class="lw-badge">{badge}</span></div>
+        <div class="ticker">
+          <ul class="ticker-track">
+            {[...h.ticker, ...h.ticker].map((x, i) => (
+              <li aria-hidden={i >= h.ticker.length ? 'true' : undefined}><span class="tk-ico"><Icon name={tickerIcons[i % tickerIcons.length]} /></span>{x}</li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    </div>
+    <p class="live-cta">
+      <a class="btn btn--primary" href={url(lang, 'demo')}>{h.liveDemo} <Icon name="arrow" /></a>
+      <span class="live-note">{g.ui.sample}</span>
+    </p>
+  </div>
+</section>
+<style>
+  .live { position: relative; overflow: hidden; background: radial-gradient(60rem 30rem at 80% -20%, #13265c, transparent 60%), var(--c-dark); }
+  .eyebrow--live { background: rgb(94 234 212 / .1); border-color: rgb(94 234 212 / .3); color: var(--c-accent); }
+  .live-dot { inline-size: 8px; block-size: 8px; border-radius: 50%; background: var(--c-accent); animation: livePulse 1.6s infinite; }
+  @keyframes livePulse { 0% { box-shadow: 0 0 0 0 rgb(94 234 212 / .6); } 70% { box-shadow: 0 0 0 8px rgb(94 234 212 / 0); } 100% { box-shadow: 0 0 0 0 rgb(94 234 212 / 0); } }
+  .live-grid { display: grid; gap: var(--sp-5); }
+  @media (min-width: 960px) { .live-grid { grid-template-columns: repeat(3, 1fr); } }
+  .lw { background: rgb(255 255 255 / .04); border: 1px solid rgb(255 255 255 / .1); border-radius: var(--r-xl); padding: var(--sp-5); min-block-size: 330px; display: flex; flex-direction: column; backdrop-filter: blur(4px); transition: border-color .2s, transform .2s; }
+  .lw:hover { border-color: rgb(94 234 212 / .4); transform: translateY(-3px); }
+  .lw-head { display: flex; justify-content: space-between; align-items: center; gap: var(--sp-2); margin-block-end: var(--sp-4); color: #fff; font-weight: 600; }
+  .lw-head > span:first-child { display: inline-flex; align-items: center; gap: var(--sp-2); }
+  .lw-head :global(.icon) { color: var(--c-accent); }
+  .lw-badge { font-size: 11px; font-weight: 700; padding: 1px 8px; border-radius: var(--r-pill); background: #fde68a; color: #5c4200; white-space: nowrap; }
+  .lw-rows { list-style: none; display: grid; gap: 2px; }
+  .lw-rows li { display: flex; justify-content: space-between; gap: var(--sp-3); padding-block: 10px; border-block-end: 1px dashed rgb(255 255 255 / .1); font-size: var(--fs-sm); color: #cbd5e6; animation: rowIn 9s calc(var(--i) * .5s) infinite both; }
+  .amt { font-weight: 600; white-space: nowrap; }
+  .amt.in { color: #4ade80; }
+  @keyframes rowIn { 0% { opacity: 0; transform: translateY(6px); } 6%, 88% { opacity: 1; transform: none; } 96%, 100% { opacity: 0; } }
+  .lw-net { margin-block-start: auto; display: flex; justify-content: space-between; padding: var(--sp-3) var(--sp-4); border-radius: var(--r-md); background: rgb(26 79 214 / .25); color: #fff; font-weight: 700; }
+  .lw-progress { block-size: 3px; background: rgb(255 255 255 / .08); border-radius: 2px; overflow: hidden; margin-block-start: var(--sp-3); }
+  .lw-progress span { display: block; block-size: 100%; inline-size: 100%; background: var(--c-accent); transform-origin: left; animation: prog 9s linear infinite; }
+  [dir='rtl'] .lw-progress span { transform-origin: right; }
+  @keyframes prog { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+  .lw-tl { list-style: none; display: grid; gap: 4px; }
+  .lw-tl li { position: relative; display: flex; gap: var(--sp-3); align-items: flex-start; padding-block: 6px; color: #cbd5e6; }
+  .lw-tl li:not(:last-child)::after { content: ''; position: absolute; inset-inline-start: 12px; inset-block: 34px -6px; inline-size: 2px; background: rgb(255 255 255 / .12); }
+  .lw-tl strong { display: block; font-size: var(--fs-sm); font-weight: 600; color: #e6ebf5; }
+  .lw-tl small { font-size: var(--fs-xs); color: #93a1ba; }
+  .lw-dot { flex: none; display: grid; place-items: center; inline-size: 26px; block-size: 26px; border-radius: 50%; border: 2px solid rgb(255 255 255 / .2); color: transparent; animation: stepOn 10s calc(var(--i) * 1.4s) infinite both; }
+  .lw-dot :global(.icon) { inline-size: 14px; block-size: 14px; }
+  @keyframes stepOn { 0% { background: transparent; border-color: rgb(255 255 255 / .2); color: transparent; } 4%, 86% { background: #16a34a; border-color: #16a34a; color: #fff; } 96%, 100% { background: transparent; border-color: rgb(255 255 255 / .2); color: transparent; } }
+  .ticker { position: relative; flex: none; overflow: hidden; block-size: 260px; mask-image: linear-gradient(transparent, #000 15%, #000 85%, transparent); }
+  .ticker-track { list-style: none; display: grid; gap: var(--sp-2); animation: tick 18s linear infinite; }
+  .ticker:hover .ticker-track { animation-play-state: paused; }
+  .ticker-track li { display: flex; align-items: center; gap: var(--sp-3); padding: 10px 12px; border-radius: var(--r-md); background: rgb(255 255 255 / .05); color: #dbe3f0; font-size: var(--fs-sm); }
+  .tk-ico { display: grid; place-items: center; inline-size: 30px; block-size: 30px; border-radius: 50%; background: rgb(94 234 212 / .12); color: var(--c-accent); flex: none; }
+  .tk-ico :global(.icon) { inline-size: 15px; block-size: 15px; }
+  @keyframes tick { from { transform: translateY(0); } to { transform: translateY(calc(-50% - var(--sp-2) / 2)); } }
+  .live-cta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-4); margin: var(--sp-6) 0 0; }
+  .live-note { font-size: var(--fs-xs); color: #93a1ba; }
+  @media (prefers-reduced-motion: reduce) {
+    .lw-rows li, .lw-dot, .ticker-track, .lw-progress span, .live-dot { animation: none !important; }
+    .lw-dot { background: #16a34a; border-color: #16a34a; color: #fff; }
+  }
+</style>

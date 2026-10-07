@@ -1,0 +1,26 @@
+// Stub di astro:env/server per i test (valori da .env caricato con --env-file).
+const e = process.env;
+export const SITE_URL = e.SITE_URL ?? 'http://localhost:4322';
+export const SUPABASE_URL = e.SUPABASE_URL ?? 'http://127.0.0.1:54321';
+export const SUPABASE_ANON_KEY = e.SUPABASE_ANON_KEY ?? '';
+export const SUPABASE_SERVICE_ROLE_KEY = e.SUPABASE_SERVICE_ROLE_KEY ?? '';
+export const COOKIE_SECURE = e.COOKIE_SECURE === 'true';
+export const BOI_API_URL = e.BOI_API_URL ?? '';
+export const CRON_SECRET = e.CRON_SECRET ?? '';
+export const PDF_INTEGRITY_SECRET = e.PDF_INTEGRITY_SECRET ?? 'test';
+export const EMAIL_PROVIDER = 'console';
+export const EMAIL_FROM = 'test@easybayit.test';
+export const SMTP_HOST = '127.0.0.1';
+export const SMTP_PORT = 54325;
+export const RESEND_API_KEY = '';
+export const LOGIN_MAX_ATTEMPTS = 5;
+export const WHATSAPP_PROVIDER = (e.WHATSAPP_PROVIDER ?? 'simulator') as 'cloud' | 'simulator' | 'disabled';
+export const WHATSAPP_ACCESS_TOKEN = e.WHATSAPP_ACCESS_TOKEN;
+export const WHATSAPP_PHONE_NUMBER_ID = e.WHATSAPP_PHONE_NUMBER_ID;
+export const WHATSAPP_APP_SECRET = e.WHATSAPP_APP_SECRET;
+export const WHATSAPP_VERIFY_TOKEN = e.WHATSAPP_VERIFY_TOKEN;
+export const WHATSAPP_GRAPH_VERSION = e.WHATSAPP_GRAPH_VERSION;
+export const WHATSAPP_SIMULATOR = e.WHATSAPP_SIMULATOR === 'true';
+export const BOT_EMERGENCY_PHONE = e.BOT_EMERGENCY_PHONE;
+export const NLU_PROVIDER = (e.NLU_PROVIDER ?? 'rules') as 'rules' | 'llm';
+export const PUBLIC_METRICS_ENABLED = e.PUBLIC_METRICS_ENABLED === 'true';

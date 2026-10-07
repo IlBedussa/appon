@@ -1,0 +1,28 @@
+---
+// Prenota una videochiamata di 15 minuti (backend mock locale).
+import PageHero from '../../PageHero.astro';
+import BookingForm from '../../trust/BookingForm.astro';
+import { tt, type Locale } from '../../../i18n/config';
+interface Props { lang: Locale }
+const { lang } = Astro.props;
+const x = tt(lang);
+const c = x.call;
+---
+<PageHero eyebrow={c.eyebrow} title={c.h1} lead={c.lead} />
+<section class="section bkp">
+  <div class="container">
+    <BookingForm lang={lang} />
+    <div class="bkp__next">
+      <h2>{c.stepsTitle}</h2>
+      <ol>{c.steps.map((s, i) => <li><span class="tnum">{i + 1}</span>{s}</li>)}</ol>
+    </div>
+  </div>
+</section>
+<style>
+  .bkp { padding-block-start: var(--sp-6); }
+  .bkp__next { margin-block-start: var(--sp-7); }
+  .bkp__next h2 { font-size: var(--fs-lg); }
+  .bkp__next ol { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--sp-3); grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+  .bkp__next li { display: flex; gap: var(--sp-3); align-items: flex-start; color: var(--c-ink-2); background: var(--c-surface); border-radius: var(--r-lg); padding: var(--sp-4); }
+  .bkp__next li span { display: grid; place-items: center; flex: none; inline-size: 28px; block-size: 28px; border-radius: 50%; background: var(--c-primary-50); color: var(--c-primary); font-weight: 700; font-size: var(--fs-sm); }
+</style>

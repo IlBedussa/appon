@@ -1,0 +1,46 @@
+---
+// Mockup di un preventivo da approvare (prova concreta di "nessuna sorpresa"). Importi oscurati.
+import Icon from './Icon.astro';
+import { t, type Locale } from '../i18n/config';
+interface Props { lang: Locale }
+const { lang } = Astro.props;
+const d = t(lang);
+const q = d.mock.quote;
+---
+<figure class="mock-quote">
+  <div class="q-card">
+    <div class="q-head">
+      <span class="icon-badge"><Icon name="doc" /></span>
+      <div>
+        <p class="q-title">{q.title}</p>
+        <p class="q-sub">{q.id} · {q.supplier}</p>
+      </div>
+    </div>
+    <ul class="q-rows">
+      {q.items.map((i) => <li><span>{i}</span><span dir="ltr">₪ ••••</span></li>)}
+      <li class="q-total"><span>{q.total}</span><span dir="ltr">₪ ••••</span></li>
+    </ul>
+    <div class="q-actions" aria-hidden="true">
+      <span class="q-btn q-btn--ok"><Icon name="check" /> {q.approve}</span>
+      <span class="q-btn">{q.ask}</span>
+    </div>
+    <p class="q-note"><Icon name="shield" /> {q.note}</p>
+  </div>
+  <figcaption>{d.ui.sample}</figcaption>
+</figure>
+<style>
+  .mock-quote { margin: 0; }
+  .q-card { background: #fff; border: 1px solid var(--c-line); border-radius: var(--r-xl); box-shadow: var(--sh-lg); padding: var(--sp-5); max-inline-size: 420px; margin-inline: auto; }
+  .q-head { display: flex; gap: var(--sp-3); align-items: center; }
+  .q-head .icon-badge { margin: 0; }
+  .q-title { font-weight: 700; margin: 0; }
+  .q-sub { margin: 0; font-size: var(--fs-sm); color: var(--c-muted); }
+  .q-rows { list-style: none; margin-block: var(--sp-4); }
+  .q-rows li { display: flex; justify-content: space-between; padding-block: var(--sp-2); border-block-end: 1px dashed var(--c-line); font-size: var(--fs-sm); color: var(--c-ink-2); }
+  .q-rows .q-total { border: 0; font-weight: 700; color: var(--c-ink); font-size: var(--fs-md); }
+  .q-actions { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-2); }
+  .q-btn { display: inline-flex; justify-content: center; align-items: center; gap: 6px; padding: 10px; border-radius: var(--r-md); border: 1.5px solid var(--c-line-strong); font-weight: 600; font-size: var(--fs-sm); }
+  .q-btn--ok { background: var(--c-success); border-color: var(--c-success); color: #fff; }
+  .q-note { display: flex; gap: var(--sp-2); align-items: center; margin: var(--sp-4) 0 0; font-size: var(--fs-xs); color: var(--c-secondary); font-weight: 600; }
+  figcaption { text-align: center; font-size: var(--fs-xs); color: var(--c-muted); margin-block-start: var(--sp-3); }
+</style>

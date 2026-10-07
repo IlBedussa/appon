@@ -1,0 +1,17 @@
+---
+// Ispezioni completate visibili all'utente (RLS: immobili propri / contratto proprio).
+import AppLayout from '../../../layouts/AppLayout.astro';
+import InspectionList from '../../../components/InspectionList.astro';
+import { ix } from '../../../i18n/inspections';
+
+const { supabase, lang, user } = Astro.locals;
+const x = ix(lang);
+const { data } = await supabase.from('inspections')
+  .select('id, kind, status, performed_at, property:properties(code, name), items:inspection_items(count), photos:inspection_photos(count), acks:inspection_acks(profile_id)')
+  .order('performed_at', { ascending: false });
+const rows = (data ?? []).map((r: any) => ({ ...r, acked: (r.acks ?? []).some((a: any) => a.profile_id === user!.id) }));
+---
+<AppLayout title={x.title} active="inspections">
+  <p class="muted">{x.sub}</p>
+  <InspectionList rows={rows} base="/tenant/inspections" showAck />
+</AppLayout>

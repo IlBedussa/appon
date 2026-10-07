@@ -1,0 +1,67 @@
+---
+// Nuova richiesta di manutenzione con foto/video. RLS verifica che l'inquilino abbia un contratto
+// in corso sull'immobile. I file sono caricati dal browser direttamente sullo storage (URL firmati);
+// qui arrivano solo gli id, verificati (tipo reale, dimensione) e collegati alla nuova richiesta.
+import AppLayout from '../../../layouts/AppLayout.astro';
+import Field from '../../../components/Field.astro';
+import Csrf from '../../../components/Csrf.astro';
+import Icon from '../../../components/Icon.astro';
+import UploadField from '../../../components/UploadField.astro';
+import { z, formToObject, fieldErrors } from '../../../lib/validation';
+import { finalizeUploads, uploadIdsFrom } from '../../../lib/direct-upload';
+import { POLICY } from '../../../lib/upload-policy';
+import { setFlash } from '../../../lib/flash';
+import { fill } from '../../../i18n';
+
+const { t, supabase, user, profile } = Astro.locals;
+const [{ data: leases }, { data: me }] = await Promise.all([
+  supabase.from('leases').select('property_id, property:properties(code, name)').in('status', ['active', 'upcoming']),
+  supabase.from('tenants').select('id').eq('profile_id', user!.id).maybeSingle(),
+]);
+const props = (leases ?? []).map((l) => ({ value: l.property_id, label: `${(l.property as any).code} · ${(l.property as any).name}` }));
+let errors: Record<string, string> = {};
+let values: Record<string, string> = { priority: 'routine', property_id: props[0]?.value ?? '' };
+
+if (Astro.request.method === 'POST' && me) {
+  const fd = await Astro.request.formData();
+  values = formToObject(fd) as Record<string, string>;
+  const schema = z.object({
+    property_id: z.uuid().refine((v) => props.some((p) => p.value === v)),
+    title: z.string().trim().min(3).max(140),
+    description: z.string().trim().max(4000).default(''),
+    priority: z.enum(['routine', 'urgent']),
+  });
+  const p = schema.safeParse(values);
+  const uploads = uploadIdsFrom(fd);
+  if (uploads.length > POLICY.maintenance.maxFiles) errors.photos = t.pri.mediaHint;
+  if (!p.success) errors = { ...errors, ...Object.fromEntries(Object.keys(fieldErrors(p.error)).map((k) => [k, t.common.invalid])) };
+  if (p.success && !errors.photos) {
+    const { data: req, error } = await supabase.from('maintenance_requests')
+      .insert({ ...p.data, tenant_id: me.id, created_by: user!.id, status: 'reported' }).select('id').single();
+    if (error || !req) errors._ = t.common.forbidden;
+    else {
+      const r = uploads.length ? await finalizeUploads({ sb: supabase, userId: user!.id, role: profile!.role }, { kind: 'maintenance', requestId: req.id }, uploads) : { rejected: [] };
+      setFlash(Astro.cookies, r.rejected.length ? 'info' : 'success', t.tenant.sent + (r.rejected.length ? ` ${fill(t.up.rejected, { n: r.rejected.length })}` : ''));
+      return Astro.redirect(`/tenant/requests/${req.id}`, 303);
+    }
+  }
+}
+---
+<AppLayout title={t.tenant.formTitle} active="new">
+  <div class="dcard">
+    <p class="muted">{t.tenant.formSub}</p>
+    {Object.keys(errors).length > 0 && <p class="form-status" data-type="error" role="alert">{errors._ ?? t.common.invalid}</p>}
+    {props.length === 0 ? <p class="notice"><Icon name="info" /> <span>{t.tenant.noLease}</span></p> : (
+      <form method="post" class="form-grid" data-testid="request-form">
+        <Csrf />
+        <Field name="property_id" label={t.tenant.propertyLabel} required options={props} value={values.property_id} error={errors.property_id} />
+        <Field name="priority" label={t.tenant.priorityLabel} required value={values.priority} hint={t.tenant.urgentHint} error={errors.priority}
+          options={[{ value: 'routine', label: t.priority.routine }, { value: 'urgent', label: t.priority.urgent }]} />
+        <Field name="title" label={t.tenant.titleLabel} required maxlength={140} value={values.title} hint={t.tenant.titleHint} error={errors.title} class="span-2" />
+        <Field name="description" label={t.tenant.descLabel} textarea maxlength={4000} value={values.description} hint={t.tenant.descHint} error={errors.description} class="span-2" />
+        <UploadField name="photos" kind="maintenance" label={t.tenant.photosLabel} hint={t.pri.mediaHint} error={errors.photos} class="span-2" />
+        <div class="form-actions span-2"><button type="submit" class="btn btn--primary"><Icon name="arrow" /> {t.tenant.send}</button></div>
+      </form>
+    )}
+  </div>
+</AppLayout>

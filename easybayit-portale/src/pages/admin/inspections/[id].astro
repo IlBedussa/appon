@@ -1,0 +1,158 @@
+---
+// Compilazione di un'ispezione (staff, solo bozze): sintesi, voci per stanza, foto con data di scatto,
+// completamento (blocca voci e foto, notifica proprietario e inquilino). Le completate sono in sola lettura.
+import AppLayout from '../../../layouts/AppLayout.astro';
+import InspectionView from '../../../components/InspectionView.astro';
+import Field from '../../../components/Field.astro';
+import Csrf from '../../../components/Csrf.astro';
+import Icon from '../../../components/Icon.astro';
+import { ix } from '../../../i18n/inspections';
+import UploadField from '../../../components/UploadField.astro';
+import { loadInspection, CONDITIONS, byRoom } from '../../../lib/inspections';
+import { z, formToObject, isoDate, optUuid } from '../../../lib/validation';
+import { finalizeUploads, uploadIdsFrom } from '../../../lib/direct-upload';
+import { israelLocalToIso } from '../../../lib/upload-policy';
+import { setFlash } from '../../../lib/flash';
+import { fill } from '../../../i18n';
+
+const { supabase, lang, t, user, profile } = Astro.locals;
+const x = ix(lang);
+const id = z.uuid().safeParse(Astro.params.id);
+if (!id.success) return Astro.rewrite('/404');
+const self = `/admin/inspections/${id.data}`;
+
+if (Astro.request.method === 'POST') {
+  const fd = await Astro.request.formData();
+  const action = fd.get('action');
+  let ok = false, msg = t.common.saved, to = self, err: string | null = null;
+  if (action === 'summary') {
+    const p = z.object({ summary: z.string().trim().max(4000), performed_at: isoDate }).safeParse(formToObject(fd));
+    ok = p.success && !(await supabase.from('inspections').update(p.data).eq('id', id.data)).error;
+  } else if (action === 'item') {
+    const p = z.object({ room: z.string().trim().min(1).max(80), item: z.string().trim().min(1).max(120), condition: z.enum(CONDITIONS), note: z.string().trim().max(1000) }).safeParse(formToObject(fd));
+    if (p.success) {
+      const { count } = await supabase.from('inspection_items').select('id', { count: 'exact', head: true }).eq('inspection_id', id.data);
+      ok = !(await supabase.from('inspection_items').insert({ ...p.data, inspection_id: id.data, position: (count ?? 0) + 1 })).error;
+    }
+  } else if (action === 'item_delete') {
+    const it = z.uuid().safeParse(fd.get('item'));
+    ok = it.success && !(await supabase.from('inspection_items').delete().eq('id', it.data).eq('inspection_id', id.data)).error;
+  } else if (action === 'photos') {
+    const p = z.object({ caption: z.string().trim().max(200), taken_at: z.string().trim().max(30), item_id: optUuid }).safeParse(formToObject(fd));
+    if (p.success) {
+      // datetime-local in ora israeliana (Asia/Jerusalem), usata solo se la foto non ha la data EXIF
+      const taken = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(p.data.taken_at) ? israelLocalToIso(p.data.taken_at) : null;
+      // file già caricati dal browser sullo storage: verifica, impronta SHA-256, data di scatto, collegamento (RLS: staff, bozza)
+      const r = await finalizeUploads({ sb: supabase, userId: user!.id, role: profile!.role }, { kind: 'inspection', inspectionId: id.data, caption: p.data.caption, takenAt: taken, itemId: p.data.item_id ?? null }, uploadIdsFrom(fd));
+      ok = r.ok.length > 0 && r.rejected.length === 0;
+      if (r.rejected.length) err = fill(t.up.rejected, { n: r.rejected.length });
+    }
+  } else if (action === 'photo_delete') {
+    const ph = z.uuid().safeParse(fd.get('photo'));
+    if (ph.success) {
+      const { data: row } = await supabase.from('inspection_photos').select('storage_path').eq('id', ph.data).eq('inspection_id', id.data).maybeSingle();
+      ok = !!row && !(await supabase.from('inspection_photos').delete().eq('id', ph.data)).error;
+      if (ok) await supabase.storage.from('inspection-photos').remove([row!.storage_path]);
+    }
+  } else if (action === 'complete') {
+    const { count } = await supabase.from('inspection_items').select('id', { count: 'exact', head: true }).eq('inspection_id', id.data);
+    if (!count) { setFlash(Astro.cookies, 'error', x.admin.needItems); return Astro.redirect(self, 303); }
+    ok = !(await supabase.from('inspections').update({ status: 'completed', completed_at: new Date().toISOString() }).eq('id', id.data).eq('status', 'draft')).error;
+    msg = x.admin.completed;
+  } else if (action === 'delete') {
+    const { data: photos } = await supabase.from('inspection_photos').select('storage_path').eq('inspection_id', id.data);
+    ok = !(await supabase.from('inspections').delete().eq('id', id.data).eq('status', 'draft')).error;
+    if (ok && photos?.length) await supabase.storage.from('inspection-photos').remove(photos.map((p) => p.storage_path));
+    msg = x.admin.deleted; to = '/admin/inspections';
+  }
+  setFlash(Astro.cookies, ok ? 'success' : 'error', ok ? msg : (err ?? t.common.invalid));
+  return Astro.redirect(to, 303);
+}
+
+const d = await loadInspection(supabase, id.data);
+if (!d) return Astro.rewrite('/404');
+const draft = d.status === 'draft';
+---
+<AppLayout title={x.kinds[d.kind]} active="inspections">
+  <p><a href="/admin/inspections" class="link-sm">← {t.common.back}</a></p>
+  <div class="stack-sm">
+    <InspectionView d={d} pdfHref={`${self}/pdf`}>
+      {draft && (
+        <div slot="actions" class="grid-2 insp-tools">
+          <section class="dcard" aria-labelledby="h-item">
+            <h2 class="panel-h" id="h-item"><Icon name="plus" /> {x.admin.addItem}</h2>
+            <form method="post" class="form-grid">
+              <Csrf /><input type="hidden" name="action" value="item" />
+              <Field name="room" label={x.admin.room} required maxlength={80} hint={x.admin.roomHint} />
+              <Field name="item" label={x.admin.item} required maxlength={120} />
+              <Field name="condition" label={x.admin.condition} required options={CONDITIONS.map((c) => ({ value: c, label: x.cond[c] }))} />
+              <Field name="note" label={x.admin.note} maxlength={1000} />
+              <div class="form-actions span-2"><button class="btn btn--secondary btn--sm" type="submit">{x.admin.addItem}</button></div>
+            </form>
+            {d.items.length > 0 && (
+              <ul class="insp-edit-list">
+                {byRoom(d.items).flatMap(([room, items]) => items.map((it) => (
+                  <li><span><strong>{room}</strong> · {it.item} · {x.cond[it.condition]}</span>
+                    <form method="post"><Csrf /><input type="hidden" name="action" value="item_delete" /><input type="hidden" name="item" value={it.id} />
+                      <button class="btn btn--secondary btn--xs" type="submit">{x.admin.removeItem}<span class="visually-hidden">: {it.item}</span></button></form></li>
+                )))}
+              </ul>
+            )}
+          </section>
+          <div class="stack-sm">
+            <section class="dcard" aria-labelledby="h-ph">
+              <h2 class="panel-h" id="h-ph"><Icon name="camera" /> {x.admin.addPhotos}</h2>
+              <form method="post" class="form-grid">
+                <Csrf /><input type="hidden" name="action" value="photos" />
+                <UploadField name="photos" kind="inspection" targetId={d.id} label={x.admin.addPhotos} required hint={x.admin.photosHint} />
+                <Field name="caption" label={x.admin.caption} maxlength={200} />
+                <Field name="taken_at" type="datetime-local" label={x.admin.takenAt} hint={x.admin.takenAtHint} />
+                <Field name="item_id" label={x.admin.linkItem} options={[{ value: '', label: x.admin.none }, ...d.items.map((i) => ({ value: i.id, label: `${i.room} · ${i.item}` }))]} />
+                <div class="form-actions span-2"><button class="btn btn--secondary btn--sm" type="submit"><Icon name="upload" /> {t.common.submit}</button></div>
+              </form>
+              {d.photos.length > 0 && (
+                <ul class="insp-edit-list">
+                  {d.photos.map((p, i) => (
+                    <li><span>{i + 1}. {p.caption || '—'}</span>
+                      <form method="post"><Csrf /><input type="hidden" name="action" value="photo_delete" /><input type="hidden" name="photo" value={p.id} />
+                        <button class="btn btn--secondary btn--xs" type="submit">{x.admin.removePhoto}<span class="visually-hidden"> {i + 1}</span></button></form></li>
+                  ))}
+                </ul>
+              )}
+            </section>
+            <section class="dcard" aria-labelledby="h-sum">
+              <h2 class="panel-h" id="h-sum"><Icon name="doc" /> {x.summary}</h2>
+              <form method="post" class="form-grid">
+                <Csrf /><input type="hidden" name="action" value="summary" />
+                <Field name="performed_at" type="date" label={x.admin.date} required value={d.performed_at} />
+                <Field name="summary" label={x.summary} textarea maxlength={4000} value={d.summary} />
+                <div class="form-actions span-2"><button class="btn btn--secondary btn--sm" type="submit">{x.admin.saveSummary}</button></div>
+              </form>
+            </section>
+            <section class="dcard insp-complete" aria-labelledby="h-done">
+              <h2 class="panel-h" id="h-done"><Icon name="lock" /> {x.admin.complete}</h2>
+              <p class="small muted">{x.admin.completeHint}</p>
+              <div class="row-actions">
+                <form method="post" data-confirm={x.admin.completeConfirm}><Csrf /><input type="hidden" name="action" value="complete" />
+                  <button class="btn btn--primary btn--sm" type="submit" disabled={d.items.length === 0}><Icon name="check" /> {x.admin.complete}</button></form>
+                <form method="post" data-confirm={t.admin.deleteConfirm}><Csrf /><input type="hidden" name="action" value="delete" />
+                  <button class="btn btn--secondary btn--sm" type="submit">{x.admin.deleteDraft}</button></form>
+              </div>
+            </section>
+          </div>
+        </div>
+      )}
+    </InspectionView>
+  </div>
+</AppLayout>
+<script>
+  // Conferma prima delle azioni irreversibili (completamento, eliminazione bozza)
+  document.querySelectorAll<HTMLFormElement>('form[data-confirm]').forEach((f) =>
+    f.addEventListener('submit', (e) => { if (!confirm(f.dataset.confirm!)) e.preventDefault(); }));
+</script>
+<style>
+  @media (min-width: 1100px) { .insp-tools { grid-template-columns: 1fr 1fr; align-items: start; } }
+  .insp-edit-list { list-style: none; margin: var(--sp-4) 0 0; padding: 0; display: grid; gap: 6px; font-size: var(--fs-sm); }
+  .insp-edit-list li { display: flex; justify-content: space-between; align-items: center; gap: var(--sp-3); padding: 6px 10px; background: #f6f8fc; border-radius: 10px; }
+  .insp-complete { border-color: #c7d7fe; }
+</style>

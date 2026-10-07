@@ -1,0 +1,33 @@
+---
+// Fascia finale del trust batch: invito alla videochiamata di 15 minuti (+ link secondario opzionale).
+import TIcon from './TIcon.astro';
+import { url, tt, t, type Locale, type PageKey } from '../../i18n/config';
+interface Props { lang: Locale; title?: string; text?: string; secondary?: PageKey }
+const { lang, title, text, secondary = 'contact' } = Astro.props;
+const x = tt(lang);
+const d = t(lang);
+---
+<section class="section section--tight">
+  <div class="container">
+    <div class="tcta">
+      <span class="tcta__ic" aria-hidden="true"><TIcon name="video" /></span>
+      <div class="tcta__txt">
+        <h2>{title ?? x.call.h1}</h2>
+        <p>{text ?? x.call.lead}</p>
+      </div>
+      <div class="btn-row">
+        <a class="btn btn--primary" href={url(lang, 'call')}>{x.strip.callCta} <TIcon name="arrow" /></a>
+        {secondary === 'contact' ? <a class="btn btn--ghost-light" href={url(lang, 'contact')}>{d.ui.cta}</a> : <a class="btn btn--ghost-light" href={url(lang, secondary)}>{x.nav[secondary as keyof typeof x.nav] ?? ''}</a>}
+      </div>
+    </div>
+  </div>
+</section>
+<style>
+  .tcta { position: relative; overflow: hidden; display: grid; gap: var(--sp-5); align-items: center; border-radius: var(--r-xl); padding: var(--sp-7) var(--sp-6);
+    background: radial-gradient(40rem 20rem at 100% 0%, rgb(94 234 212 / .18), transparent 60%), linear-gradient(135deg, #0b1324 0%, #13265c 100%); color: #d6deee; }
+  @media (min-width: 960px) { .tcta { grid-template-columns: auto 1fr auto; } }
+  .tcta__ic { display: grid; place-items: center; inline-size: 64px; block-size: 64px; border-radius: 18px; background: rgb(255 255 255 / .08); border: 1px solid rgb(255 255 255 / .14); color: var(--c-accent); }
+  .tcta__ic :global(.icon) { inline-size: 30px; block-size: 30px; }
+  .tcta h2 { color: #fff; font-size: var(--fs-xl); margin-block-end: var(--sp-2); }
+  .tcta p { margin: 0; max-inline-size: 60ch; }
+</style>

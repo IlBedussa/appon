@@ -1,0 +1,191 @@
+---
+// Sicurezza dell'account: 2FA TOTP (attivazione con QR, disattivazione solo per owner/tenant),
+// cambio password, profilo, disconnessione delle altre sessioni, attività recenti (dal log di audit).
+import AppLayout from '../layouts/AppLayout.astro';
+import Field from '../components/Field.astro';
+import Csrf from '../components/Csrf.astro';
+import Icon from '../components/Icon.astro';
+import Pill from '../components/Pill.astro';
+import { z, totpCode, password as pwSchema, formToObject } from '../lib/validation';
+import { logEvent } from '../lib/audit';
+import { setFlash } from '../lib/flash';
+import { hit } from '../lib/ratelimit';
+import { ephemeralClient } from '../lib/supabase';
+import { isStaffRole } from '../lib/session';
+import { dateTime } from '../lib/format';
+import { langMeta, locales } from '../i18n';
+
+const { t, supabase, user, profile, hasMfa, intl } = Astro.locals;
+const staff = isStaffRole(profile!.role);
+let enroll: { factorId: string; qr: string; secret: string } | null = null;
+let error = '';
+const back = (type: 'success' | 'error', msg: string) => { setFlash(Astro.cookies, type, msg); return Astro.redirect('/security', 303); };
+
+if (Astro.request.method === 'POST') {
+  const fd = await Astro.request.formData();
+  const action = String(fd.get('action') ?? '');
+
+  if (action === 'enroll' && !hasMfa) {
+    // rimuove eventuali fattori non verificati lasciati a metà
+    const { data: list } = await supabase.auth.mfa.listFactors();
+    for (const f of list?.all ?? []) if (f.status !== 'verified') await supabase.auth.mfa.unenroll({ factorId: f.id });
+    const { data, error: e } = await supabase.auth.mfa.enroll({ factorType: 'totp', friendlyName: `Easybayit ${new Date().toISOString().slice(0, 10)}`, issuer: 'Easybayit' });
+    if (e || !data) error = t.common.error;
+    else enroll = { factorId: data.id, qr: data.totp.qr_code, secret: data.totp.secret };
+  } else if (action === 'verify' && !hasMfa) {
+    const factorId = z.uuid().safeParse(fd.get('factorId'));
+    const code = totpCode.safeParse(fd.get('code'));
+    if (!(await hit('mfa', user!.id, 10, 900))) error = t.auth.rateLimited;
+    else if (factorId.success && code.success) {
+      const { error: e } = await supabase.auth.mfa.challengeAndVerify({ factorId: factorId.data, code: code.data });
+      if (!e) {
+        await logEvent(supabase, 'auth.mfa_enrolled', 'auth', user!.id);
+        return back('success', t.sec.enabled);
+      }
+    }
+    error = error || t.auth.mfaInvalid;
+    // si ripropone lo stesso QR per riprovare
+    if (factorId.success) {
+      const { data: list } = await supabase.auth.mfa.listFactors();
+      const f = list?.all?.find((x) => x.id === factorId.data);
+      const qr = String(fd.get('qr') ?? '');
+      const secret = String(fd.get('secret') ?? '');
+      // si accettano solo valori nel formato atteso (data URI SVG e chiave base32)
+      if (f && f.status !== 'verified' && qr.startsWith('data:image/svg+xml') && /^[A-Z2-7]{16,64}$/.test(secret)) enroll = { factorId: f.id, qr, secret };
+    }
+  } else if (action === 'unenroll') {
+    if (staff) return back('error', t.sec.cannotDisable);
+    const { data: list } = await supabase.auth.mfa.listFactors();
+    for (const f of list?.totp ?? []) await supabase.auth.mfa.unenroll({ factorId: f.id });
+    await logEvent(supabase, 'auth.mfa_unenrolled', 'auth', user!.id);
+    return back('success', t.sec.disabled);
+  } else if (action === 'password') {
+    const current = String(fd.get('current') ?? '');
+    const pw = String(fd.get('password') ?? ''), pw2 = String(fd.get('password2') ?? '');
+    if (!(await hit('pwchange', user!.id, 5, 900))) error = t.auth.rateLimited;
+    else if (pw !== pw2) error = t.auth.mismatch;
+    else if (!pwSchema.safeParse(pw).success) error = t.auth.weak;
+    else {
+      // verifica della password attuale con un client separato (non tocca la sessione corrente)
+      const eph = ephemeralClient();
+      const { error: e1 } = await eph.auth.signInWithPassword({ email: user!.email!, password: current });
+      if (e1) error = t.sec.wrongPassword;
+      else {
+        await eph.auth.signOut({ scope: 'local' });
+        const { error: e2 } = await supabase.auth.updateUser({ password: pw });
+        if (e2) error = t.auth.weak;
+        else {
+          await logEvent(supabase, 'auth.password_changed', 'auth', user!.id);
+          return back('success', t.sec.passwordChanged);
+        }
+      }
+    }
+  } else if (action === 'profile') {
+    const p = z.object({
+      full_name: z.string().trim().min(1).max(200),
+      locale: z.enum(locales),
+      preferred_currency: z.enum(['ILS', 'USD', 'EUR', 'GBP']),
+    }).safeParse(formToObject(fd));
+    if (!p.success) error = t.common.invalid;
+    else {
+      const { error: e } = await supabase.from('profiles').update(p.data).eq('id', user!.id);
+      if (e) error = t.common.error;
+      else {
+        Astro.cookies.delete('eb_cur', { path: '/' });
+        return back('success', t.common.saved);
+      }
+    }
+  } else if (action === 'signout_others') {
+    await supabase.auth.signOut({ scope: 'others' });
+    return back('success', t.sec.othersOut);
+  }
+}
+
+const { data: events } = await supabase.from('audit_log').select('action, created_at, meta').eq('actor_id', user!.id).not('action', 'like', '%.insert').not('action', 'like', '%.update').not('action', 'like', '%.delete').order('created_at', { ascending: false }).limit(15);
+const required = staff && !hasMfa;
+---
+<AppLayout title={t.sec.title} active="security">
+  {required && <p class="notice" role="alert"><Icon name="alert" /> <span>{t.sec.requiredStaff}</span></p>}
+  {error && <p class="form-status" data-type="error" role="alert">{error}</p>}
+
+  <div class="sec-grid">
+    <section class="dcard" aria-labelledby="h-2fa">
+      <div class="dcard-head">
+        <span><strong id="h-2fa">{t.sec.twofa}</strong><small>{t.sec.twofaText}</small></span>
+        {hasMfa ? <Pill tone="ok"><Icon name="check" /> {t.sec.on}</Pill> : <Pill>{t.sec.off}</Pill>}
+      </div>
+      {enroll ? (
+        <div class="qr-box" data-testid="mfa-enroll">
+          <p>{t.sec.scan}</p>
+          <img src={enroll.qr} alt="QR code TOTP" width="200" height="200" />
+          <p class="small">{t.sec.manual} <code class="secret" data-testid="totp-secret">{enroll.secret}</code></p>
+          <form method="post" class="stack-sm">
+            <Csrf />
+            <input type="hidden" name="action" value="verify" />
+            <input type="hidden" name="factorId" value={enroll.factorId} />
+            <input type="hidden" name="qr" value={enroll.qr} />
+            <input type="hidden" name="secret" value={enroll.secret} />
+            <Field name="code" label={t.sec.enterCode} required autocomplete="one-time-code" inputmode="numeric" pattern="[0-9]{6}" maxlength={6} />
+            <button type="submit" class="btn btn--primary btn--sm">{t.auth.verify}</button>
+          </form>
+        </div>
+      ) : hasMfa ? (
+        staff ? <p class="muted small">{t.sec.cannotDisable}</p> : (
+          <form method="post"><Csrf /><input type="hidden" name="action" value="unenroll" />
+            <button type="submit" class="btn btn--secondary btn--sm">{t.sec.disable}</button></form>
+        )
+      ) : (
+        <form method="post"><Csrf /><input type="hidden" name="action" value="enroll" />
+          <button type="submit" class="btn btn--primary btn--sm"><Icon name="shield" /> {t.sec.enable}</button></form>
+      )}
+    </section>
+
+    {!required && (
+      <section class="dcard" aria-labelledby="h-pw">
+        <div class="dcard-head"><strong id="h-pw">{t.sec.password}</strong></div>
+        <form method="post" class="stack-sm">
+          <Csrf />
+          <input type="hidden" name="action" value="password" />
+          <input type="email" name="username" value={user?.email} autocomplete="username" hidden />
+          <Field name="current" type="password" label={t.sec.currentPassword} required autocomplete="current-password" maxlength={128} />
+          <Field name="password" type="password" label={t.auth.newPassword} required autocomplete="new-password" maxlength={128} hint={t.auth.passwordRules} />
+          <Field name="password2" type="password" label={t.auth.confirmPassword} required autocomplete="new-password" maxlength={128} />
+          <button type="submit" class="btn btn--secondary btn--sm">{t.common.save}</button>
+        </form>
+      </section>
+    )}
+  </div>
+
+  {!required && (
+    <div class="sec-grid">
+      <section class="dcard" aria-labelledby="h-prof">
+        <div class="dcard-head"><strong id="h-prof">{t.sec.profile}</strong></div>
+        <form method="post" class="stack-sm">
+          <Csrf />
+          <input type="hidden" name="action" value="profile" />
+          <Field name="full_name" label={t.sec.fullName} value={profile!.full_name} required maxlength={200} autocomplete="name" />
+          <Field name="locale" label={t.sec.prefLang} value={profile!.locale} required options={locales.map((l) => ({ value: l, label: langMeta[l].label }))} />
+          <Field name="preferred_currency" label={t.sec.prefCur} value={profile!.preferred_currency} required options={['ILS', 'USD', 'EUR', 'GBP'].map((c) => ({ value: c, label: c }))} />
+          <button type="submit" class="btn btn--secondary btn--sm">{t.common.save}</button>
+        </form>
+      </section>
+      <section class="dcard" aria-labelledby="h-sess">
+        <div class="dcard-head"><strong id="h-sess">{t.sec.sessions}</strong></div>
+        <form method="post"><Csrf /><input type="hidden" name="action" value="signout_others" />
+          <button type="submit" class="btn btn--secondary btn--sm"><Icon name="device" /> {t.sec.signOutOthers}</button></form>
+      </section>
+    </div>
+
+    <div class="table-wrap dtable dcard flush">
+      <table>
+        <caption>{t.sec.log}</caption>
+        <thead><tr><th scope="col">{t.sec.event}</th><th scope="col">{t.sec.when}</th></tr></thead>
+        <tbody>
+          {(events ?? []).map((e) => (
+            <tr><th scope="row">{t.sec.actions[e.action] ?? e.action}</th><td class="nowrap">{dateTime(e.created_at, intl)}</td></tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )}
+</AppLayout>

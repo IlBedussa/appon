@@ -1,0 +1,93 @@
+---
+// Diagramma SVG dell'architettura (semplificata) della piattaforma. In ebraico viene specchiato
+// (utenti a destra, integrazioni a sinistra). I fornitori non ancora scelti mostrano il segnaposto.
+import { t, langMeta, type Locale } from '../i18n/config';
+interface Props { lang: Locale }
+const { lang } = Astro.props;
+const a = t(lang).pages.technology.arch;
+const rtl = langMeta[lang].dir === 'rtl';
+const VW = 1000;
+const X = (x: number, w = 0) => (rtl ? VW - x - w : x); // posizione di un box
+const mx = (x: number) => (rtl ? VW - x : x); // posizione di un punto
+
+const users = [
+  { label: a.owners, y: 90 }, { label: a.tenants, y: 200 }, { label: a.team, y: 310 },
+];
+const core = [
+  { label: a.api, y: 96 }, { label: a.auth, y: 172 }, { label: a.audit, y: 248 },
+];
+const ext = [
+  { label: a.pay, tbc: true, y: 70 }, { label: a.bank, tbc: false, y: 146 }, { label: a.notify, tbc: true, y: 222 },
+  { label: a.sign, tbc: true, y: 298 }, { label: a.acct, tbc: true, y: 374 },
+];
+const curve = (x1: number, y1: number, x2: number, y2: number) => {
+  const m = (x1 + x2) / 2;
+  return `M${mx(x1)},${y1} C${mx(m)},${y1} ${mx(m)},${y2} ${mx(x2)},${y2}`;
+};
+---
+<figure class="arch">
+  <svg viewBox={`0 0 ${VW} 460`} role="img" aria-labelledby="arch-desc">
+    <desc id="arch-desc">{`${a.clients}: ${a.owners}, ${a.tenants}, ${a.team} → ${a.core}: ${a.api}, ${a.auth}, ${a.audit}, ${a.db}, ${a.vault} → ${a.external}: ${a.pay} ${a.tbc}, ${a.bank}, ${a.notify} ${a.tbc}, ${a.sign} ${a.tbc}, ${a.acct} ${a.tbc}`}</desc>
+    <defs>
+      <linearGradient id="coreg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0b1324" /><stop offset="1" stop-color="#13265c" /></linearGradient>
+    </defs>
+    <!-- connettori -->
+    {users.map((u) => <path class="flow" d={curve(240, u.y + 35, 360, 124)} />)}
+    {ext.map((e) => <path class="flow flow--ext" d={curve(680, 230, 760, e.y + 28)} />)}
+
+    <!-- colonna utenti -->
+    <text x={mx(130)} y="60" text-anchor="middle" class="col-h">{a.clients}</text>
+    {users.map((u) => (
+      <g>
+        <rect x={X(20, 220)} y={u.y} width="220" height="70" rx="14" class="box" />
+        <text x={mx(130)} y={u.y + 41} text-anchor="middle" class="box-t">{u.label}</text>
+      </g>
+    ))}
+
+    <!-- piattaforma -->
+    <rect x={X(320, 360)} y="36" width="360" height="400" rx="22" fill="url(#coreg)" />
+    <text x={mx(500)} y="72" text-anchor="middle" class="core-h">{a.core}</text>
+    {core.map((c) => (
+      <g>
+        <rect x={X(350, 300)} y={c.y} width="300" height="56" rx="12" class="core-box" />
+        <text x={mx(500)} y={c.y + 34} text-anchor="middle" class="core-t">{c.label}</text>
+      </g>
+    ))}
+    <rect x={X(350, 142)} y="330" width="142" height="80" rx="12" class="core-box core-box--data" />
+    <text x={mx(421)} y="376" text-anchor="middle" class="core-t sm">{a.db}</text>
+    <rect x={X(508, 142)} y="330" width="142" height="80" rx="12" class="core-box core-box--data" />
+    <text x={mx(579)} y="376" text-anchor="middle" class="core-t sm">{a.vault}</text>
+    <circle cx={mx(500)} cy="160" r="4" class="pulse-dot" />
+
+    <!-- integrazioni -->
+    <text x={mx(870)} y="52" text-anchor="middle" class="col-h">{a.external}</text>
+    {ext.map((e) => (
+      <g>
+        <rect x={X(760, 220)} y={e.y} width="220" height="56" rx="12" class:list={['box', { 'box--tbc': e.tbc }]} />
+        <text x={mx(870)} y={e.tbc ? e.y + 25 : e.y + 33} text-anchor="middle" class="box-t">{e.label}</text>
+        {e.tbc && <text x={mx(870)} y={e.y + 44} text-anchor="middle" class="tbc-t">{a.tbc}</text>}
+      </g>
+    ))}
+  </svg>
+</figure>
+<style>
+  .arch { margin: 0; background: #fff; border: 1px solid var(--c-line); border-radius: var(--r-xl); padding: var(--sp-5); box-shadow: var(--sh-md); overflow-x: auto; }
+  svg { inline-size: 100%; min-inline-size: 640px; block-size: auto; font-family: var(--font-sans); }
+  .col-h { font-size: 14px; font-weight: 700; fill: var(--c-muted); text-transform: uppercase; letter-spacing: .06em; }
+  :lang(he) .col-h { text-transform: none; letter-spacing: 0; font-size: 16px; }
+  .box { fill: #fff; stroke: var(--c-line-strong); stroke-width: 1.5; }
+  .box--tbc { stroke-dasharray: 6 5; fill: #fffbeb; stroke: #e2b85b; }
+  .box-t { font-size: 16px; font-weight: 600; fill: var(--c-ink); }
+  .tbc-t { font-size: 12px; font-weight: 600; fill: #8a6100; }
+  .core-h { font-size: 18px; font-weight: 700; fill: #fff; }
+  .core-box { fill: rgb(255 255 255 / .07); stroke: rgb(255 255 255 / .18); }
+  .core-box--data { fill: rgb(94 234 212 / .1); stroke: rgb(94 234 212 / .35); }
+  .core-t { font-size: 15px; font-weight: 600; fill: #e6ebf5; }
+  .core-t.sm { font-size: 14px; }
+  .flow { fill: none; stroke: #9db4f0; stroke-width: 2; stroke-dasharray: 6 6; animation: flow 1.6s linear infinite; }
+  .flow--ext { stroke: #7fd6c9; }
+  @keyframes flow { to { stroke-dashoffset: -24; } }
+  .pulse-dot { fill: #5eead4; animation: blink 1.6s ease-in-out infinite; }
+  @keyframes blink { 50% { opacity: .2; } }
+  @media (prefers-reduced-motion: reduce) { .flow, .pulse-dot { animation: none; } }
+</style>

@@ -1,0 +1,15 @@
+---
+// Selettore lingua: link diretti (funziona senza JS). La scelta è salvata in un cookie.
+import { locales, langMeta } from '../i18n';
+const { lang, t } = Astro.locals;
+const next = Astro.url.pathname + Astro.url.search;
+---
+<nav class="lang" aria-label={t.common.language}>
+  <ul>
+    {locales.map((l) => (
+      <li><a href={`/lang?l=${l}&next=${encodeURIComponent(next)}`} hreflang={l} lang={l} aria-current={l === lang ? 'true' : undefined} title={langMeta[l].label}>
+        <span aria-hidden="true">{langMeta[l].short}</span><span class="visually-hidden">{langMeta[l].label}</span>
+      </a></li>
+    ))}
+  </ul>
+</nav>

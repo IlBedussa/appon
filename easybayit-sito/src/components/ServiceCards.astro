@@ -1,0 +1,23 @@
+---
+// Griglia di schede servizio (icona, titolo, testo, punti verificabili).
+import Icon from './Icon.astro';
+import T from './T.astro';
+// level: livello del titolo delle schede (2 se la pagina non ha un h2 prima della griglia → ordine dei titoli corretto).
+interface Props { items: { icon: string; title: string; text: string; points: string[] }[]; level?: 2 | 3 }
+const { items, level = 3 } = Astro.props;
+const H = level === 2 ? 'h2' : 'h3';
+---
+<div class="grid grid--3">
+  {items.map((s, i) => (
+    <article class="card">
+      <span class:list={['icon-badge', { 'icon-badge--teal': i % 2 === 1 }]}><Icon name={s.icon} /></span>
+      <H class="sc-title">{s.title}</H>
+      <p>{s.text}</p>
+      <ul class="checklist">{s.points.map((p) => <li><Icon name="check" /><span><T text={p} /></span></li>)}</ul>
+    </article>
+  ))}
+</div>
+
+<style>
+  .sc-title { font-size: var(--fs-lg); }
+</style>

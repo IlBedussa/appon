@@ -1,0 +1,105 @@
+---
+// Modifica rendiconto: voci, pubblicazione (notifica + email al proprietario via trigger DB), anteprima PDF.
+import AppLayout from '../../../layouts/AppLayout.astro';
+import StatementView from '../../../components/StatementView.astro';
+import Field from '../../../components/Field.astro';
+import Csrf from '../../../components/Csrf.astro';
+import Icon from '../../../components/Icon.astro';
+import Money from '../../../components/Money.astro';
+import Pill from '../../../components/Pill.astro';
+import { z, formToObject, isoDate, money, optUuid } from '../../../lib/validation';
+import { setFlash } from '../../../lib/flash';
+import { date } from '../../../lib/format';
+import { integrityCode } from '../../../lib/pdf/statement';
+import { loadStatementForPdf } from '../../../lib/statements';
+import { PDF_INTEGRITY_SECRET } from 'astro:env/server';
+
+const { t, supabase, intl } = Astro.locals;
+const id = z.uuid().safeParse(Astro.params.id);
+if (!id.success) return Astro.rewrite('/404');
+const self = `/admin/statements/${id.data}`;
+let error = '';
+
+if (Astro.request.method === 'POST') {
+  const fd = await Astro.request.formData();
+  const action = fd.get('action');
+  if (action === 'publish' || action === 'unpublish') {
+    const { error: e } = await supabase.from('statements').update({ status: action === 'publish' ? 'published' : 'draft' }).eq('id', id.data);
+    setFlash(Astro.cookies, e ? 'error' : 'success', e ? t.common.error : action === 'publish' ? t.admin.st.publishedOk : t.admin.updated);
+    return Astro.redirect(self, 303);
+  }
+  if (action === 'delete_line') {
+    const lid = z.uuid().safeParse(fd.get('line'));
+    if (lid.success) await supabase.from('statement_lines').delete().eq('id', lid.data).eq('statement_id', id.data);
+    setFlash(Astro.cookies, 'success', t.admin.deleted);
+    return Astro.redirect(self, 303);
+  }
+  if (action === 'add_line') {
+    const p = z.object({
+      line_date: isoDate, category: z.enum(['rent', 'management_fee', 'repair', 'building_fee', 'insurance', 'arnona', 'utilities', 'listing', 'cleaning', 'other']),
+      property_id: optUuid, description: z.string().trim().max(300).default(''), amount_ils: money.refine((n) => n !== 0),
+    }).safeParse(formToObject(fd));
+    if (!p.success) error = t.common.invalid;
+    else {
+      const { error: e } = await supabase.from('statement_lines').insert({ ...p.data, property_id: p.data.property_id ?? null, statement_id: id.data });
+      if (e) error = t.common.invalid;
+      else { setFlash(Astro.cookies, 'success', t.admin.created); return Astro.redirect(self, 303); }
+    }
+  }
+}
+
+const { data: s } = await supabase.from('statements')
+  .select('id, period, status, published_at, owner_id, owner:owners(full_name), statement_lines(id, line_date, category, description, amount_ils, document_id, property:properties(code, name))')
+  .eq('id', id.data).maybeSingle();
+if (!s) return Astro.rewrite('/404');
+const { data: props } = await supabase.from('properties').select('id, code, name').eq('owner_id', s.owner_id).order('code');
+const pdfData = await loadStatementForPdf(supabase, s.id);
+const code = pdfData ? integrityCode(pdfData, PDF_INTEGRITY_SECRET) : '';
+const cats = Object.entries(t.categories).map(([value, label]) => ({ value, label }));
+---
+<AppLayout title={`${t.st.title} · ${(s.owner as any)?.full_name}`} active="statements">
+  <p><a href="/admin/statements" class="link-sm">← {t.common.back}</a></p>
+  <div class="panel-bar">
+    <p class="mt-0"><Pill tone={s.status === 'published' ? 'ok' : 'warn'}>{(t.stStatus as Record<string, string>)[s.status]}</Pill>
+      {s.status === 'draft' && <span class="muted small"> · {t.admin.st.draftNote}</span>}
+      <span class="muted small"> · {t.st.pdfIntegrity}: <code class="ltr">{code}</code></span></p>
+    <div class="panel-actions">
+      <a class="btn btn--secondary btn--sm" href={`${self}/pdf`}><Icon name="download" /> {t.admin.st.preview}</a>
+      <form method="post"><Csrf /><input type="hidden" name="action" value={s.status === 'draft' ? 'publish' : 'unpublish'} />
+        <button class={`btn btn--sm ${s.status === 'draft' ? 'btn--primary' : 'btn--secondary'}`} type="submit">{s.status === 'draft' ? t.admin.st.publish : t.admin.st.unpublish}</button></form>
+    </div>
+  </div>
+  <StatementView period={s.period} lines={(s.statement_lines ?? []) as any} />
+
+  <div class="table-wrap dtable dcard flush">
+    <table>
+      <caption>{t.st.lines}</caption>
+      <thead><tr><th scope="col">{t.common.date}</th><th scope="col">{t.st.item}</th><th scope="col" class="num">{t.common.amount}</th><th scope="col">{t.common.actions}</th></tr></thead>
+      <tbody>
+        {(s.statement_lines ?? []).sort((a, b) => a.line_date.localeCompare(b.line_date)).map((l) => (
+          <tr>
+            <td>{date(l.line_date, intl)}</td>
+            <th scope="row">{(t.categories as Record<string, string>)[l.category]} {l.description && <small class="muted">· {l.description}</small>}</th>
+            <td class="num"><Money v={l.amount_ils} signed /></td>
+            <td><form method="post"><Csrf /><input type="hidden" name="action" value="delete_line" /><input type="hidden" name="line" value={l.id} />
+              <button class="btn btn--secondary btn--xs" type="submit">{t.common.delete}</button></form></td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+
+  <section class="dcard" aria-labelledby="h-add">
+    <h2 class="panel-h" id="h-add"><Icon name="plus" /> {t.admin.st.addLine}</h2>
+    {error && <p class="form-status" data-type="error" role="alert">{error}</p>}
+    <form method="post" class="form-grid">
+      <Csrf /><input type="hidden" name="action" value="add_line" />
+      <Field name="line_date" type="date" label={t.admin.st.lineDate} required value={s.period} />
+      <Field name="category" label={t.st.item} required options={cats} />
+      <Field name="property_id" label={t.common.property} options={[{ value: '', label: '—' }, ...(props ?? []).map((p) => ({ value: p.id, label: `${p.code} · ${p.name}` }))]} />
+      <Field name="amount_ils" type="number" step="0.01" label={`${t.common.amount} (ILS, − = ${t.st.expenses.toLowerCase()})`} required />
+      <Field name="description" label={t.st.description} maxlength={300} class="span-2" />
+      <div class="form-actions span-2"><button class="btn btn--primary btn--sm" type="submit">{t.admin.st.addLine}</button></div>
+    </form>
+  </section>
+</AppLayout>

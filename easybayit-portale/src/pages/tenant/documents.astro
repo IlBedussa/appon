@@ -1,0 +1,7 @@
+---
+import AppLayout from '../../layouts/AppLayout.astro';
+import DocList from '../../components/DocList.astro';
+const { t, supabase } = Astro.locals;
+const { data } = await supabase.from('documents').select('id, title, category, size_bytes, mime_type, created_at, expires_on, property:properties(code, name)').order('created_at', { ascending: false });
+---
+<AppLayout title={t.docs.title} active="documents"><DocList docs={(data ?? []) as any} /></AppLayout>
